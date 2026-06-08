@@ -92,6 +92,12 @@ re-scanning the QR.
 auto-migrates (new columns added, existing rows preserved). So updating from any
 version keeps all accounts/contacts/lists/campaigns.
 
+**Updates don't re-download dependencies.** Node, PHP and the app dependencies
+are only fetched the **first** time (or if something is missing/broken/changed).
+An update with unchanged dependencies reuses what's already installed — it does
+not re-download Chromium or the modules. (Note: *uninstalling* removes them, so a
+later fresh install downloads again — prefer updating in place over uninstalling.)
+
 **How updating works.** When the dashboard shows *Update available → Update now*,
 the app downloads the new installer, **stops itself**, installs **silently in
 place** (data preserved), and **relaunches** — no manual steps. You can also just

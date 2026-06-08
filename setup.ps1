@@ -70,13 +70,36 @@ error_log = "$errLog"
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "data") | Out-Null
 
 # --- App dependencies (Node modules + Chromium) -----------------------------
-Write-Host "[3/4] Installing app dependencies (downloads Chromium - a few minutes) ..."
-$npm = Join-Path $NodeDir "npm.cmd"
-Push-Location (Join-Path $Root "engine")
-& $npm install --no-audit --no-fund
-$rc = $LASTEXITCODE
-Pop-Location
-if ($rc -ne 0) { throw "npm install failed (exit $rc)." }
+# Only (re)install when missing, broken, or the app version changed — so an
+# update with unchanged dependencies does NOT re-download anything.
+$npm     = Join-Path $NodeDir "npm.cmd"
+$nodeExe = Join-Path $NodeDir "node.exe"
+$engineDir = Join-Path $Root "engine"
+$modules = Join-Path $engineDir "node_modules"
+$marker  = Join-Path $Runtime ".deps-version"
+$pkgVer  = "0"
+try { $pkgVer = (Get-Content (Join-Path $engineDir "package.json") -Raw | ConvertFrom-Json).version } catch {}
+
+$needInstall = $true
+if ((Test-Path $modules) -and (Test-Path $marker)) {
+  $have = (Get-Content $marker -ErrorAction SilentlyContinue | Select-Object -First 1)
+  if ("$have".Trim() -eq "$pkgVer") {
+    & $nodeExe -e "require('better-sqlite3');require('whatsapp-web.js');require('express')" 2>$null
+    if ($LASTEXITCODE -eq 0) { $needInstall = $false }
+  }
+}
+
+if ($needInstall) {
+  Write-Host "[3/4] Installing app dependencies (first time downloads Chromium - a few minutes) ..."
+  Push-Location $engineDir
+  & $npm install --no-audit --no-fund
+  $rc = $LASTEXITCODE
+  Pop-Location
+  if ($rc -ne 0) { throw "npm install failed (exit $rc)." }
+  Set-Content -Path $marker -Value $pkgVer -Encoding ASCII
+} else {
+  Write-Host "[3/4] Dependencies already installed and matching v$pkgVer - skipping download."
+}
 
 # --- Shortcuts --------------------------------------------------------------
 if (-not $NoShortcut) {

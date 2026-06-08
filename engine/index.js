@@ -17,7 +17,7 @@
 const path = require('path');
 const fs = require('fs');
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const REPO = 'atul7275/whatsapp-automater';
 const PORT = process.env.PORT || 3000;
 const DATA = path.join(__dirname, '..', 'data');
