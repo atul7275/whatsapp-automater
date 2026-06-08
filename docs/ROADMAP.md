@@ -17,6 +17,10 @@ and what's still missing across architecture, security, bugs, UX and settings.
   websites / DNS-rebinding from scripting the API.
 - **Delay range clamped** — `min_delay > max_delay` no longer breaks the wait.
 - **Settings key-wipe bug fixed** — a blank OpenAI field no longer erases a saved key.
+- **Results export.** Per-campaign Excel (`.xlsx`) export of the full message log.
+- **Campaign scheduling.** Schedule a start date/time; the engine auto-starts it
+  when due. Includes a **duration estimate** (composer + detail page) and a
+  **pre-send confirmation** summarizing account, audience size and variants.
 
 ## 🔒 Security — still worth knowing
 - **No login on the panel.** Anyone with access to the machine can use it. Fine
@@ -42,12 +46,12 @@ and what's still missing across architecture, security, bugs, UX and settings.
   country code; storing phones as text in the sheet is safest.
 
 ## 🏗️ Architecture / features — remaining gaps
-1. **No scheduling.** Can't queue a campaign to begin at a future time.
-2. **No results export.** Add CSV/Excel export of the send log per campaign.
-3. **No global defaults / per-account daily cap.** The 50/day cap is hard-coded;
+1. **No global defaults / per-account daily cap.** The 50/day cap is hard-coded;
    surface it (and other defaults) on the Settings page.
-4. **Cloud API opt-outs** need a Meta webhook (public URL) — currently only
+2. **Cloud API opt-outs** need a Meta webhook (public URL) — currently only
    automation accounts auto-handle STOP. Document/handle for Cloud API.
+3. **No panel password.** Single-user local tool; add optional auth if shared.
+4. **No send retry** for transient failures (a "retry failed" button).
 5. **Single worker per account, in-process.** Fine for this scale; if it ever
    grows, move the queue to a proper job runner.
 
@@ -71,6 +75,7 @@ and what's still missing across architecture, security, bugs, UX and settings.
 ## Suggested order of work
 1. ~~Contact lists / audience selection per campaign.~~ ✅
 2. ~~STOP/opt-out auto-handler (compliance).~~ ✅
-3. Results export (CSV/Excel).
-4. Campaign scheduling + duration estimate + pre-send confirm.
+3. ~~Results export (Excel).~~ ✅
+4. ~~Campaign scheduling + duration estimate + pre-send confirm.~~ ✅
 5. Settings: global defaults, per-account cap, optional panel password.
+6. Retry-failed button; Cloud API opt-out webhook.

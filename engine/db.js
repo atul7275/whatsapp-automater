@@ -111,6 +111,7 @@ ensureColumns('campaigns', {
   micro_breaks: 'INTEGER NOT NULL DEFAULT 1',
   cloud_template: 'TEXT',
   list_id: 'INTEGER',                              // NULL = all contacts
+  scheduled_at: 'TEXT',                            // NULL = not scheduled; else 'YYYY-MM-DD HH:MM:SS' local
 });
 ensureColumns('contacts', {
   unsubscribed: 'INTEGER NOT NULL DEFAULT 0',

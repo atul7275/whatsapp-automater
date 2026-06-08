@@ -93,14 +93,40 @@ function syncAccountUI() {
   else { dl.max = 50; if (+dl.value > 50 || +dl.value === 0) dl.value = 50; $('capNote').textContent = 'Automation is hard-capped at 50/day per number.'; }
 }
 
-// ---- submit: pack variants into the hidden field --------------------------
+// ---- submit: confirm + pack variants into the hidden field ----------------
+let lastAudienceCount = 0;
 $('campForm').addEventListener('submit', (e) => {
   const variants = getVariants();
   if (!variants.length) { e.preventDefault(); alert('Add at least one message variant.'); return; }
+  const acct = $('accountSel').selectedOptions[0]?.text.trim() || '';
+  const aud = $('listSel') ? ($('listSel').selectedOptions[0]?.text || 'all') : 'all';
+  const ok = confirm(
+    `Queue this campaign?\n\n` +
+    `• Account: ${acct}\n` +
+    `• Audience: ${aud} (≈${lastAudienceCount} recipients; unsubscribed & opt-outs skipped)\n` +
+    `• Variants: ${variants.length}\n\n` +
+    `It will be saved as a DRAFT — nothing sends until you press Start (or Schedule) on the next screen.`
+  );
+  if (!ok) { e.preventDefault(); return; }
   $('variantsField').value = JSON.stringify(variants);
 });
 
-// ---- live audience count --------------------------------------------------
+// ---- live audience count + duration estimate ------------------------------
+function estimate(total) {
+  const min = +document.querySelector('[name=min_delay]').value || 20;
+  const max = +document.querySelector('[name=max_delay]').value || 60;
+  const avg = Math.max(3, (min + max) / 2);
+  const isCloud = $('accountSel').selectedOptions[0]?.dataset.type === 'cloud_api';
+  let cap = +$('dailyLimit').value || 0;
+  if (!isCloud) cap = Math.min(cap || 50, 50);
+  if (!total) return '';
+  if (cap > 0 && total > cap) {
+    const days = Math.ceil(total / cap);
+    return `≈ ${days} day${days > 1 ? 's' : ''} to finish (capped at ${cap}/day)`;
+  }
+  const secs = total * avg;
+  return secs < 3600 ? `≈ ${Math.ceil(secs / 60)} min to finish` : `≈ ${(secs / 3600).toFixed(1)} h to finish`;
+}
 async function syncAudience() {
   const sel = $('listSel');
   if (!sel) return;
@@ -108,15 +134,21 @@ async function syncAudience() {
   try {
     const r = await fetch(ENGINE + '/api/contacts' + q);
     const d = await r.json();
+    lastAudienceCount = d.total;
     const label = sel.value ? `"${sel.selectedOptions[0].text}"` : 'all contacts';
     $('audienceNote').innerHTML =
-      `<strong>${d.total}</strong> in ${label}. Unsubscribed &amp; opt-outs are skipped automatically.`;
+      `<strong>${d.total}</strong> in ${label} · ${estimate(d.total)}<br>` +
+      `<span class="muted small">Unsubscribed &amp; opt-outs are skipped automatically.</span>`;
   } catch (_) {}
 }
 
 // init
-$('accountSel').addEventListener('change', syncAccountUI);
+$('accountSel').addEventListener('change', () => { syncAccountUI(); syncAudience(); });
 if ($('listSel')) $('listSel').addEventListener('change', syncAudience);
+['min_delay', 'max_delay', 'daily_limit'].forEach(n => {
+  const el = document.querySelector(`[name=${n}]`);
+  if (el) el.addEventListener('input', syncAudience);
+});
 addVariant();
 syncAccountUI();
 syncAudience();

@@ -31,7 +31,7 @@ h1 { font-size: 22px; } h2 { font-size: 16px; margin-top: 0; }
 .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
 .btnrow form { margin: 0; }
 form.form label { display: block; margin: 12px 0 4px; font-size: 14px; font-weight: 600; }
-input[type=text], input[type=number], textarea, input[type=file] {
+input[type=text], input[type=number], input[type=datetime-local], textarea, input[type=file] {
   width: 100%; padding: 9px; border: 1px solid var(--line); border-radius: 7px; font: inherit; }
 textarea { resize: vertical; }
 fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 16px 0; }
@@ -54,7 +54,7 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .steps { padding-left: 20px; } .steps li { margin: 6px 0; }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
 .pill.running, .pill.sent { background: #e6f4ea; color: var(--ok); }
-.pill.paused, .pill.pending, .pill.draft { background: #fff3e0; color: var(--warn); }
+.pill.paused, .pill.pending, .pill.draft, .pill.scheduled { background: #fff3e0; color: var(--warn); }
 .pill.failed { background: #fdecea; color: var(--err); }
 .pill.invalid, .pill.done { background: #eceff1; color: var(--muted); }
 .bar { height: 14px; background: #eceff1; border-radius: 10px; overflow: hidden; }

@@ -49,6 +49,8 @@ each running its **own separate campaign queue**.
 - 🗂️ **Contact lists** — import into named lists; target a list or everyone per campaign
 - 🚫 **STOP / opt-out auto-handler** — incoming "STOP" replies auto-unsubscribe
   (optional auto-reply); every campaign skips opt-outs; `START` re-subscribes
+- ⏰ **Scheduling** — set a future start; auto-starts when due (with duration estimate + pre-send confirm)
+- 📊 **Excel export** of per-campaign results
 - Live progress bars, per-message logs, pause / resume / delete
 
 ---

@@ -3,8 +3,11 @@ require __DIR__ . '/inc.php';
 
 $id = (int)($_GET['id'] ?? 0);
 $act = $_POST['action'] ?? '';
-if ($act && in_array($act, ['start', 'pause', 'delete'], true)) {
-    $r = api_post("/api/campaigns/$id/$act");
+if ($act === 'schedule') {
+    api_post_json("/api/campaigns/$id/schedule", ['scheduled_at' => $_POST['scheduled_at'] ?? '']);
+    header("Location: campaign.php?id=$id"); exit;
+} elseif ($act && in_array($act, ['start', 'pause', 'delete', 'unschedule'], true)) {
+    api_post("/api/campaigns/$id/$act");
     if ($act === 'delete') { header('Location: campaigns.php'); exit; }
     header("Location: campaign.php?id=$id"); exit;
 }
@@ -28,14 +31,31 @@ $pct = $p['total'] > 0 ? round($done / $p['total'] * 100) : 0;
     <h2>Controls</h2>
     <div class="btnrow">
       <?php if ($c['status'] !== 'running'): ?>
-        <form method="post"><input type="hidden" name="action" value="start"><button class="btn">▶ Start</button></form>
+        <form method="post"><input type="hidden" name="action" value="start"><button class="btn">▶ Start now</button></form>
       <?php else: ?>
         <form method="post"><input type="hidden" name="action" value="pause"><button class="btn warn">⏸ Pause</button></form>
       <?php endif; ?>
+      <a class="btn ghost" href="<?= h(ENGINE) ?>/api/campaigns/<?= $id ?>/export.xlsx">⬇ Export results</a>
       <form method="post" onsubmit="return confirm('Delete this campaign and its queue?')">
         <input type="hidden" name="action" value="delete"><button class="btn danger">🗑 Delete</button>
       </form>
     </div>
+
+    <?php if ($c['status'] === 'scheduled'): ?>
+      <div class="note">⏰ Scheduled to start at <strong><?= h($c['scheduled_at']) ?></strong>.
+        <form method="post" style="display:inline;margin-left:8px">
+          <input type="hidden" name="action" value="unschedule"><button class="btn ghost small">Cancel schedule</button>
+        </form>
+      </div>
+    <?php elseif ($c['status'] !== 'running' && $c['status'] !== 'done'): ?>
+      <form method="post" class="row" style="margin-top:10px; align-items:flex-end">
+        <input type="hidden" name="action" value="schedule">
+        <label style="flex:1; margin:0">Schedule start
+          <input type="datetime-local" name="scheduled_at" required>
+        </label>
+        <button class="btn small">⏰ Schedule</button>
+      </form>
+    <?php endif; ?>
     <p class="muted small">
       Account <strong><?= h($c['account_name']) ?></strong>
       (<?= $c['account_type']==='cloud_api' ? 'Business API' : 'humanized automation' ?>) ·
@@ -60,6 +80,21 @@ $pct = $p['total'] > 0 ? round($done / $p['total'] * 100) : 0;
       <li class="err">Failed <strong><?= (int)$p['failed'] ?></strong></li>
       <li class="muted">Invalid <strong><?= (int)$p['invalid'] ?></strong></li>
     </ul>
+    <?php
+      $rem = (int)$p['pending'];
+      if ($rem > 0) {
+        $avg = max(3, ((int)$c['min_delay'] + (int)$c['max_delay']) / 2);
+        $cap = $c['account_type'] === 'automation' ? min(((int)$c['daily_limit'] ?: 50), 50) : (int)$c['daily_limit'];
+        if ($cap > 0 && $rem > $cap) {
+          $days = ceil($rem / $cap);
+          $est = "~{$days} day" . ($days > 1 ? 's' : '') . " (capped at {$cap}/day)";
+        } else {
+          $secs = $rem * $avg;
+          $est = $secs < 3600 ? '~' . ceil($secs / 60) . ' min' : '~' . round($secs / 3600, 1) . ' hours';
+        }
+        echo '<p class="muted small">⏱ Estimated time to finish remaining: <strong>' . h($est) . '</strong></p>';
+      }
+    ?>
   </div>
 </div>
 

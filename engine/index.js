@@ -257,8 +257,22 @@ async function processAccount(rec) {
   } catch (e) { console.error('[processAccount]', e); rec.busy = false; }
 }
 
+// promote scheduled campaigns whose start time has arrived
+function promoteScheduled() {
+  const due = db.prepare(
+    `SELECT id, account_id FROM campaigns WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= datetime('now','localtime')`
+  ).all();
+  for (const c of due) {
+    db.prepare(`UPDATE campaigns SET status='paused' WHERE status='running' AND account_id=? AND id<>?`).run(c.account_id, c.id);
+    db.prepare(`UPDATE campaigns SET status='running' WHERE id=?`).run(c.id);
+    const rec = accounts.get(c.account_id); if (rec) rec.sentSinceBreak = 0;
+    console.log(`[schedule] campaign ${c.id} started (scheduled time reached)`);
+  }
+}
+
 // master tick: drive every ready, idle account independently (parallel flows)
 setInterval(() => {
+  promoteScheduled();
   for (const rec of accounts.values()) {
     if (rec.state === 'ready' && !rec.busy) processAccount(rec);
   }
@@ -572,15 +586,40 @@ app.post('/api/campaigns/:id/:action', (req, res) => {
   if (action === 'start') {
     // one running campaign per account; pause others on the same number
     db.prepare(`UPDATE campaigns SET status='paused' WHERE status='running' AND account_id=? AND id<>?`).run(c.account_id, id);
-    db.prepare(`UPDATE campaigns SET status='running' WHERE id=?`).run(id);
+    db.prepare(`UPDATE campaigns SET status='running', scheduled_at=NULL WHERE id=?`).run(id);
     const rec = accounts.get(c.account_id); if (rec) rec.sentSinceBreak = 0;
   } else if (action === 'pause') {
     db.prepare(`UPDATE campaigns SET status='paused' WHERE id=?`).run(id);
+  } else if (action === 'schedule') {
+    let when = String((req.body || {}).scheduled_at || '').trim().replace('T', ' ');
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(when)) when += ':00';
+    if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(when)) return res.status(400).json({ error: 'Invalid date/time' });
+    db.prepare(`UPDATE campaigns SET status='scheduled', scheduled_at=? WHERE id=?`).run(when, id);
+  } else if (action === 'unschedule') {
+    db.prepare(`UPDATE campaigns SET status='draft', scheduled_at=NULL WHERE id=?`).run(id);
   } else if (action === 'delete') {
     db.prepare(`DELETE FROM messages WHERE campaign_id=?`).run(id);
     db.prepare(`DELETE FROM campaigns WHERE id=?`).run(id);
   } else return res.status(400).json({ error: 'Unknown action' });
   res.json({ ok: true });
+});
+
+// Excel export of a campaign's per-message results (opened directly by the browser)
+app.get('/api/campaigns/:id/export.xlsx', (req, res) => {
+  const c = db.prepare(`SELECT name FROM campaigns WHERE id=?`).get(req.params.id);
+  if (!c) return res.status(404).send('Not found');
+  const rows = db.prepare(`
+    SELECT phone AS Phone, name AS Name, status AS Status, error AS Error,
+           sent_at AS "Sent at", rendered AS Message
+    FROM messages WHERE campaign_id=? ORDER BY id`).all(req.params.id);
+  const ws = XLSX.utils.json_to_sheet(rows.length ? rows
+    : [{ Phone: '', Name: '', Status: '', Error: '', 'Sent at': '', Message: '' }]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Results');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Disposition', `attachment; filename="campaign-${req.params.id}-results.xlsx"`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
 });
 
 // Bind to loopback only — never expose the API to the local network.
