@@ -11,12 +11,43 @@
 //  LOCAL USE ONLY. Even humanized, automated bulk messaging breaks WhatsApp's
 //  ToS and can get a number banned. Only message people who opted in.
 // ===========================================================================
+// --- bootstrap: set up logging + crash handlers BEFORE the heavy requires, so a
+//     failed dependency load (e.g. the native better-sqlite3 module) is captured
+//     to data/engine.log instead of vanishing silently. --------------------------
+const path = require('path');
+const fs = require('fs');
+
+const APP_VERSION = '1.6.0';
+const REPO = 'atul7275/whatsapp-automater';
+const PORT = process.env.PORT || 3000;
+const DATA = path.join(__dirname, '..', 'data');
+const SESSION_DIR = path.join(DATA, 'session');
+const UPLOAD_DIR = path.join(DATA, 'uploads');
+try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); fs.mkdirSync(SESSION_DIR, { recursive: true }); } catch (_) {}
+
+try {
+  const logStream = fs.createWriteStream(path.join(DATA, 'engine.log'), { flags: 'a' });
+  const tee = (orig) => (...a) => { try { logStream.write(a.map(String).join(' ') + '\n'); } catch (_) {} orig(...a); };
+  console.log = tee(console.log.bind(console));
+  console.error = tee(console.error.bind(console));
+} catch (_) {}
+
+let booted = false;
+process.on('uncaughtException', (e) => {
+  console.error('[FATAL] uncaught:', e && e.stack ? e.stack : e);
+  if (!booted) {
+    console.error('[FATAL] The engine failed to start — usually the install did not finish.');
+    console.error('[FATAL] Run Troubleshoot.bat in the install folder to repair dependencies.');
+    process.exit(1);
+  }
+});
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e && e.stack ? e.stack : e));
+console.log(`[boot] BulkWPSender engine v${APP_VERSION} starting (node ${process.version}, ${process.platform}) ${new Date().toISOString()}`);
+
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const qrcode = require('qrcode');
-const path = require('path');
-const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
@@ -27,28 +58,6 @@ const { db, getSetting, setSetting } = require('./db');
 const { render } = require('./template');
 const cloudapi = require('./cloudapi');
 const ai = require('./ai');
-
-const APP_VERSION = '1.5.0';
-const REPO = 'atul7275/whatsapp-automater';
-
-const PORT = process.env.PORT || 3000;
-const DATA = path.join(__dirname, '..', 'data');
-const SESSION_DIR = path.join(DATA, 'session');
-const UPLOAD_DIR = path.join(DATA, 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-fs.mkdirSync(SESSION_DIR, { recursive: true });
-
-// Mirror console output to data/engine.log so failures are diagnosable even
-// when the engine runs hidden (the tray launches it with no visible window).
-try {
-  const logStream = fs.createWriteStream(path.join(DATA, 'engine.log'), { flags: 'a' });
-  const tee = (orig) => (...a) => { try { logStream.write(a.map(String).join(' ') + '\n'); } catch (_) {} orig(...a); };
-  console.log = tee(console.log.bind(console));
-  console.error = tee(console.error.bind(console));
-  process.on('uncaughtException', (e) => console.error('[uncaught]', e && e.stack ? e.stack : e));
-  process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e && e.stack ? e.stack : e));
-} catch (_) {}
-console.log(`[boot] BulkWPSender engine v${APP_VERSION} starting (node ${process.version}, ${process.platform})`);
 
 const AUTOMATION_DAILY_CAP = 50; // hard safety ceiling per number
 
@@ -718,4 +727,12 @@ app.post('/api/update', async (req, res) => {
 });
 
 // Bind to loopback only — never expose the API to the local network.
-app.listen(PORT, '127.0.0.1', () => console.log(`[api] BulkWPSender engine v${APP_VERSION} on http://localhost:${PORT}`));
+const server = app.listen(PORT, '127.0.0.1', () => {
+  booted = true;
+  console.log(`[api] BulkWPSender engine v${APP_VERSION} on http://127.0.0.1:${PORT}`);
+});
+server.on('error', (e) => {
+  console.error('[FATAL] Could not bind port ' + PORT + ':', e && e.message ? e.message : e);
+  if (e && e.code === 'EADDRINUSE') console.error('[FATAL] Port ' + PORT + ' is already in use (another copy running?).');
+  process.exit(1);
+});

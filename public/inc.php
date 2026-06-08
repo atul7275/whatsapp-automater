@@ -6,20 +6,40 @@
 // (::1) first, but the engine binds IPv4 loopback — causing connection failures.
 define('ENGINE', getenv('ENGINE_URL') ?: 'http://127.0.0.1:3000');
 
-/** GET JSON from the engine. Returns decoded array or ['__error'=>msg]. */
-function api_get($path) {
-    $ch = curl_init(ENGINE . $path);
+// Once a call fails to connect, remember it for this page render so the other
+// calls on the same page return instantly instead of each waiting to time out.
+$GLOBALS['__engine_down'] = false;
+
+function api_common_opts($ch) {
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_CONNECTTIMEOUT_MS => 1200,   // fail fast if the engine is down
+        CURLOPT_NOSIGNAL => true,
     ]);
+}
+function api_fail($ch) {
+    // connection-level failures mean the engine is down — short-circuit the rest
+    $errno = curl_errno($ch);
+    if (in_array($errno, [CURLE_COULDNT_CONNECT, CURLE_OPERATION_TIMEDOUT, CURLE_COULDNT_RESOLVE_HOST], true)) {
+        $GLOBALS['__engine_down'] = true;
+    }
+    return ['__error' => 'Engine not reachable: ' . curl_error($ch)];
+}
+
+/** GET JSON from the engine. Returns decoded array or ['__error'=>msg]. */
+function api_get($path) {
+    if ($GLOBALS['__engine_down']) return ['__error' => 'Engine not reachable'];
+    $ch = curl_init(ENGINE . $path);
+    api_common_opts($ch);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     $body = curl_exec($ch);
-    if ($body === false) return ['__error' => 'Engine not reachable: ' . curl_error($ch)];
+    if ($body === false) return api_fail($ch);
     return json_decode($body, true) ?: ['__error' => 'Bad response'];
 }
 
 /** POST to the engine. $files = ['fieldname' => '/tmp/path' (real upload)]. */
 function api_post($path, $fields = [], $files = [], $method = 'POST') {
+    if ($GLOBALS['__engine_down']) return ['__error' => 'Engine not reachable'];
     $ch = curl_init(ENGINE . $path);
     $post = $fields;
     foreach ($files as $name => $f) {
@@ -27,29 +47,30 @@ function api_post($path, $fields = [], $files = [], $method = 'POST') {
             $post[$name] = new CURLFile($f['tmp_name'], $f['type'], $f['name']);
         }
     }
+    api_common_opts($ch);
     curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_POSTFIELDS => $post,
         CURLOPT_TIMEOUT => 120,
     ]);
     $body = curl_exec($ch);
-    if ($body === false) return ['__error' => 'Engine not reachable: ' . curl_error($ch)];
+    if ($body === false) return api_fail($ch);
     return json_decode($body, true) ?: ['__error' => 'Bad response'];
 }
 
 /** POST a JSON body to the engine (for endpoints expecting application/json). */
 function api_post_json($path, $data = []) {
+    if ($GLOBALS['__engine_down']) return ['__error' => 'Engine not reachable'];
     $ch = curl_init(ENGINE . $path);
+    api_common_opts($ch);
     curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => json_encode($data),
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         CURLOPT_TIMEOUT => 60,
     ]);
     $body = curl_exec($ch);
-    if ($body === false) return ['__error' => 'Engine not reachable: ' . curl_error($ch)];
+    if ($body === false) return api_fail($ch);
     return json_decode($body, true) ?: ['__error' => 'Bad response'];
 }
 
