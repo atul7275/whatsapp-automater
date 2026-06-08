@@ -50,9 +50,15 @@ if (-not (Test-Path (Join-Path $PhpDir "php.exe"))) {
   New-Item -ItemType Directory -Force -Path $PhpDir | Out-Null
   Expand-Archive -Path $zip -DestinationPath $PhpDir -Force
   Remove-Item $zip -Force
-  # minimal php.ini. IMPORTANT: extension_dir must be ABSOLUTE — a relative
-  # "ext" resolves against the process CWD (the app root), not the php folder,
-  # so curl would fail to load and every panel page would break.
+} else { Write-Host "[2/4] PHP already present - skipping download." }
+
+# make sure the data dir exists (PHP error_log + engine DB live here)
+New-Item -ItemType Directory -Force -Path (Join-Path $Root "data") | Out-Null
+
+# ALWAYS (re)write php.ini, even when PHP was already present — an old install may
+# have a broken php.ini (relative extension_dir) that stops curl from loading,
+# which breaks every panel page. extension_dir MUST be an absolute path.
+if (Test-Path (Join-Path $PhpDir "php.exe")) {
   $extDir = (Join-Path $PhpDir "ext") -replace '\\', '/'
   $errLog = (Join-Path $Root "data\php-error.log") -replace '\\', '/'
   @"
@@ -64,10 +70,8 @@ extension=fileinfo
 log_errors = On
 error_log = "$errLog"
 "@ | Set-Content -Encoding ASCII -Path (Join-Path $PhpDir "php.ini")
-} else { Write-Host "[2/4] PHP already present - skipping." }
-
-# make sure the data dir exists (PHP error_log + engine DB live here)
-New-Item -ItemType Directory -Force -Path (Join-Path $Root "data") | Out-Null
+  Write-Host "      php.ini written (curl enabled, absolute extension_dir)."
+}
 
 # --- App dependencies (Node modules + Chromium) -----------------------------
 # Only (re)install when missing, broken, or the app version changed — so an

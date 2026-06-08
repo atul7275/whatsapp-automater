@@ -2,6 +2,20 @@
 // Shared config + helpers for the PHP control panel.
 // The PHP side is a thin UI: it talks to the Node engine over HTTP.
 
+// The panel needs PHP's curl extension. If php.ini is misconfigured it won't be
+// loaded — show a clear fix instead of a fatal "undefined function" crash.
+if (!function_exists('curl_init')) {
+    http_response_code(500);
+    echo '<!doctype html><meta charset="utf-8"><title>BulkWPSender — setup needed</title>'
+       . '<div style="font-family:system-ui;max-width:620px;margin:60px auto;padding:24px;border:1px solid #ddd;border-radius:12px">'
+       . '<h2>⚠ PHP curl extension is not enabled</h2>'
+       . '<p>The control panel needs PHP\'s <code>curl</code> extension, which isn\'t loading.</p>'
+       . '<p><strong>Fix it in one step:</strong> run <code>Troubleshoot.bat</code> in your install '
+       . 'folder (or Start Menu → <em>Troubleshoot BulkWPSender</em>). It rewrites the PHP config and restarts.</p>'
+       . '<p class="muted">Then reopen this page.</p></div>';
+    exit;
+}
+
 // Use 127.0.0.1 (not "localhost"): on Windows "localhost" can resolve to IPv6
 // (::1) first, but the engine binds IPv4 loopback — causing connection failures.
 define('ENGINE', getenv('ENGINE_URL') ?: 'http://127.0.0.1:3000');

@@ -21,12 +21,11 @@ if exist "%NODE%" (echo [ OK ] Node runtime found) else (echo [MISS] Node runtim
 if exist "%PHP%"  (echo [ OK ] PHP runtime found)  else (echo [MISS] PHP runtime   & set "OK=0")
 if exist "%~dp0engine\node_modules" (echo [ OK ] node_modules folder present) else (echo [MISS] node_modules & set "OK=0")
 
-if "%OK%"=="0" (
-  echo.
-  echo Missing components - running full setup...
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -NoShortcut
-  if errorlevel 1 ( echo Setup FAILED - check internet/proxy/antivirus. & pause & exit /b 1 )
-)
+echo.
+echo Running setup to repair config (php.ini) and any missing parts...
+echo (Already-installed Node/PHP/dependencies are reused, not re-downloaded.)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -NoShortcut
+if errorlevel 1 ( echo Setup FAILED - check internet/proxy/antivirus. & pause & exit /b 1 )
 
 echo.
 echo Checking that the engine's modules actually load...
