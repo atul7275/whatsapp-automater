@@ -110,14 +110,26 @@ if ($needInstall) {
   }
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
   Push-Location $engineDir
-  & $npm install --no-audit --no-fund
+  # --foreground-scripts + explicit script enable: some machines have a global
+  # npmrc with ignore-scripts=true, which would skip the native-binary download
+  # (better-sqlite3) and leave require() failing.
+  & $npm install --no-audit --no-fund --foreground-scripts --ignore-scripts=false
   $rc = $LASTEXITCODE
+  # Make sure the better-sqlite3 native binary is present (rebuild if scripts were skipped).
+  & $npm rebuild better-sqlite3 --foreground-scripts 2>&1 | Out-Null
   Pop-Location
   $ErrorActionPreference = $prev
   if ($rc -ne 0) { throw "npm install failed (exit $rc). Check internet/proxy/antivirus." }
   if (-not (Test-Modules)) {
-    & $nodeExe -e "require('better-sqlite3');require('whatsapp-web.js')" 2>"$Root\data\deps-error.log"
-    throw "Dependencies still fail to load after install - see data\deps-error.log"
+    $prev2 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $err = & $nodeExe -e "try{require('better-sqlite3');require('whatsapp-web.js');console.log('ok')}catch(e){console.error(e && e.stack ? e.stack : String(e))}" 2>&1 | Out-String
+    $ErrorActionPreference = $prev2
+    Set-Content -Path (Join-Path $Root 'data\deps-error.log') -Value $err
+    Write-Host ""
+    Write-Host "=== Dependencies still fail to load. Real error: ==="
+    Write-Host $err
+    Write-Host "=== (also saved to data\deps-error.log) ==="
+    throw "Dependency load failed - see the error above."
   }
   Set-Content -Path $marker -Value $pkgVer -Encoding ASCII
   Write-Host "      Dependencies installed and verified."
