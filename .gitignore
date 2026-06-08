@@ -1,0 +1,15 @@
+# dependencies & runtime
+node_modules/
+data/
+runtime/
+installer/output/
+
+# build / logs / OS
+*.log
+.DS_Store
+**/.DS_Store
+
+# editor / local tooling
+.claude/
+.vscode/
+.idea/

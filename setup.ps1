@@ -1,0 +1,96 @@
+# =============================================================================
+#  BulkWPSender — setup / bootstrap
+#  Downloads a portable Node.js + PHP, installs app dependencies (incl. the
+#  Chromium used by WhatsApp Web), writes a php.ini, and creates shortcuts.
+#  Safe to re-run: anything already present is skipped.
+# =============================================================================
+param([switch]$NoShortcut)
+
+$ErrorActionPreference = "Stop"
+$Root    = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Runtime = Join-Path $Root "runtime"
+$NodeDir = Join-Path $Runtime "node"
+$PhpDir  = Join-Path $Runtime "php"
+$NodeVer = "v20.18.1"          # pinned LTS (kept available on nodejs.org)
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
+
+function Get-File($url, $out) {
+  Write-Host "  -> $url"
+  Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+}
+
+# --- Node.js ----------------------------------------------------------------
+if (-not (Test-Path (Join-Path $NodeDir "node.exe"))) {
+  Write-Host "[1/4] Downloading Node.js $NodeVer ..."
+  $zip = Join-Path $env:TEMP "bwps-node.zip"
+  Get-File "https://nodejs.org/dist/$NodeVer/node-$NodeVer-win-x64.zip" $zip
+  Write-Host "      Extracting ..."
+  Expand-Archive -Path $zip -DestinationPath $Runtime -Force
+  if (Test-Path $NodeDir) { Remove-Item $NodeDir -Recurse -Force }
+  Rename-Item (Join-Path $Runtime "node-$NodeVer-win-x64") $NodeDir
+  Remove-Item $zip -Force
+} else { Write-Host "[1/4] Node.js already present - skipping." }
+
+# --- PHP (auto-discover latest 8.3 NTS x64) ---------------------------------
+if (-not (Test-Path (Join-Path $PhpDir "php.exe"))) {
+  Write-Host "[2/4] Locating latest PHP 8.3 ..."
+  $file = $null; $base = ""
+  try {
+    $page = (Invoke-WebRequest "https://windows.php.net/downloads/releases/" -UseBasicParsing).Content
+    $hit  = [regex]::Matches($page, 'php-8\.3\.\d+-nts-Win32-vs16-x64\.zip')
+    if ($hit.Count -gt 0) { $file = $hit[0].Value }
+  } catch { }
+  if (-not $file) { $file = "php-8.3.14-nts-Win32-vs16-x64.zip"; $base = "archives/" }  # fallback
+  Write-Host "[2/4] Downloading PHP ($file) ..."
+  $zip = Join-Path $env:TEMP "bwps-php.zip"
+  Get-File "https://windows.php.net/downloads/releases/$base$file" $zip
+  Write-Host "      Extracting ..."
+  New-Item -ItemType Directory -Force -Path $PhpDir | Out-Null
+  Expand-Archive -Path $zip -DestinationPath $PhpDir -Force
+  Remove-Item $zip -Force
+  # minimal php.ini: enable curl (panel -> engine), plus common extensions
+  @"
+extension_dir = "ext"
+extension=curl
+extension=openssl
+extension=mbstring
+extension=fileinfo
+"@ | Set-Content -Encoding ASCII -Path (Join-Path $PhpDir "php.ini")
+} else { Write-Host "[2/4] PHP already present - skipping." }
+
+# --- App dependencies (Node modules + Chromium) -----------------------------
+Write-Host "[3/4] Installing app dependencies (downloads Chromium - a few minutes) ..."
+$npm = Join-Path $NodeDir "npm.cmd"
+Push-Location (Join-Path $Root "engine")
+& $npm install --no-audit --no-fund
+$rc = $LASTEXITCODE
+Pop-Location
+if ($rc -ne 0) { throw "npm install failed (exit $rc)." }
+
+# --- Shortcuts --------------------------------------------------------------
+if (-not $NoShortcut) {
+  Write-Host "[4/4] Creating shortcuts ..."
+  $vbs = Join-Path $Root "BulkWPSender.vbs"
+  $ws  = New-Object -ComObject WScript.Shell
+  $targets = @(
+    [Environment]::GetFolderPath("Desktop"),
+    (Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs")
+  )
+  foreach ($d in $targets) {
+    $lnk = $ws.CreateShortcut((Join-Path $d "BulkWPSender.lnk"))
+    $lnk.TargetPath       = "wscript.exe"
+    $lnk.Arguments        = '"' + $vbs + '"'
+    $lnk.WorkingDirectory = $Root
+    $lnk.IconLocation     = (Join-Path $NodeDir "node.exe")
+    $lnk.Save()
+  }
+} else { Write-Host "[4/4] Skipping shortcuts (installer handles them)." }
+
+Write-Host ""
+Write-Host "============================================================"
+Write-Host "  Setup complete!"
+Write-Host "  Start BulkWPSender from the Desktop shortcut, then open:"
+Write-Host "      http://localhost:8080"
+Write-Host "============================================================"

@@ -1,0 +1,41 @@
+name: Build Windows Installer
+
+# Builds BulkWPSender-Setup.exe on a Windows runner.
+# - Run manually: Actions tab -> "Build Windows Installer" -> Run workflow
+# - Or push a version tag (e.g. v1.0.0) to also attach the .exe to a Release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate engine installs (catches dependency breakage early)
+        working-directory: engine
+        run: npm install --no-audit --no-fund
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"   # CI only validates deps; users download Chromium at install
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Compile installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\bulkwpsender.iss'
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BulkWPSender-Setup
+          path: installer/output/BulkWPSender-Setup.exe
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/output/BulkWPSender-Setup.exe

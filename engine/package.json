@@ -1,0 +1,30 @@
+{
+  "name": "bulkwpsender-engine",
+  "version": "1.0.0",
+  "description": "WhatsApp bulk sender engine (whatsapp-web.js) — local use only",
+  "main": "index.js",
+  "type": "commonjs",
+  "author": "Atul Kumar (Future Dynamics) <atul7275@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/atul7275/whatsapp-automater",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/atul7275/whatsapp-automater.git"
+  },
+  "bugs": {
+    "email": "atul7275@gmail.com",
+    "url": "https://github.com/atul7275/whatsapp-automater/issues"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "qrcode": "^1.5.4",
+    "whatsapp-web.js": "^1.34.7",
+    "xlsx": "^0.18.5"
+  }
+}
