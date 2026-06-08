@@ -70,6 +70,13 @@ edit `start-servers.bat` (panel port) and set `PORT` for the engine.
 
 ## Troubleshooting
 
+- **Nothing happens when I launch it** → the bundled Node/PHP probably didn't
+  finish downloading during install. Run **`Troubleshoot.bat`** in the install
+  folder (also on the Start Menu as *Troubleshoot BulkWPSender*). It checks what's
+  missing, re-runs setup, and starts the servers in **visible** windows so you can
+  see any error. Logs are written to `data\engine.log` and `data\php-error.log`.
+- **Antivirus blocked the launcher** → newer builds launch via PowerShell (not
+  `.vbs`); if your AV still interferes, whitelist the install folder.
 - **"Running scripts is disabled"** → `install.bat` already bypasses this; if you
   run `setup.ps1` by hand use:
   `powershell -ExecutionPolicy Bypass -File setup.ps1`

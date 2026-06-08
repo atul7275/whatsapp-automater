@@ -43,14 +43,17 @@ Source: "..\tray.ps1";           DestDir: "{app}"
 Source: "..\BulkWPSender.vbs";   DestDir: "{app}"
 Source: "..\start-servers.bat";  DestDir: "{app}"
 Source: "..\stop-servers.bat";   DestDir: "{app}"
+Source: "..\Troubleshoot.bat";   DestDir: "{app}"
 Source: "..\sample-contacts.csv";DestDir: "{app}"
 Source: "..\README.md";          DestDir: "{app}"; Flags: isreadme
 
 [Icons]
-Name: "{group}\BulkWPSender";           Filename: "wscript.exe"; Parameters: """{app}\BulkWPSender.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\runtime\node\node.exe"
+; Launch via PowerShell directly (no .vbs — many antivirus tools block .vbs launchers).
+Name: "{group}\BulkWPSender";           Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tray.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\runtime\node\node.exe"
+Name: "{group}\Troubleshoot BulkWPSender"; Filename: "{app}\Troubleshoot.bat"; WorkingDir: "{app}"
 Name: "{group}\Stop BulkWPSender";      Filename: "{app}\stop-servers.bat"; WorkingDir: "{app}"
 Name: "{group}\Uninstall BulkWPSender"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\BulkWPSender";     Filename: "wscript.exe"; Parameters: """{app}\BulkWPSender.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\runtime\node\node.exe"; Tasks: desktopicon
+Name: "{autodesktop}\BulkWPSender";     Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tray.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\runtime\node\node.exe"; Tasks: desktopicon
 
 [Run]
 ; Download Node.js + PHP + dependencies. Shown (not hidden) so the user sees progress.
@@ -60,8 +63,8 @@ Filename: "powershell.exe"; \
   StatusMsg: "Downloading Node.js, PHP and dependencies (a few minutes)..."; \
   Flags: waituntilterminated
 ; Optional launch at the end.
-Filename: "wscript.exe"; Parameters: """{app}\BulkWPSender.vbs"""; \
-  Description: "Launch BulkWPSender now"; Flags: postinstall nowait skipifsilent
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tray.ps1"""; \
+  WorkingDir: "{app}"; Description: "Launch BulkWPSender now"; Flags: postinstall nowait skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\runtime"

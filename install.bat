@@ -23,9 +23,9 @@ if errorlevel 1 (
 
 echo.
 echo  Launching BulkWPSender...
-wscript "%~dp0BulkWPSender.vbs"
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0tray.ps1"
 echo.
-echo  Done. The app will open at  http://localhost:8080
-echo  (Use the Desktop shortcut next time. Close the server windows to stop.)
+echo  Done. The app opens at  http://localhost:8080  (tray icon, bottom-right).
+echo  If nothing appears, run  Troubleshoot.bat  in this folder.
 echo.
 pause

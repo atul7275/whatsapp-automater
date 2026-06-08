@@ -89,6 +89,12 @@ copies automatically. See **[INSTALL.md](INSTALL.md)** for full details.
 Once installed, BulkWPSender runs from a **system-tray icon** — right-click for
 *Open / Restart / Quit (stops the servers cleanly)*.
 
+- 🔄 **Auto-update:** the dashboard checks GitHub for new releases and shows an
+  **Update now** button (downloads + runs the new installer on Windows).
+- 🩺 **Troubleshoot:** if launching does nothing, run **`Troubleshoot.bat`** —
+  it checks the install, re-runs setup, and starts the servers in visible
+  windows so errors are obvious. Logs: `data\engine.log`, `data\php-error.log`.
+
 ## Run it manually (developers, any OS)
 
 Requires Node.js 18+ and PHP 8+ on your `PATH`:

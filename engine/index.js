@@ -17,6 +17,8 @@ const multer = require('multer');
 const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const { spawn } = require('child_process');
 const XLSX = require('xlsx');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
@@ -25,12 +27,27 @@ const { render } = require('./template');
 const cloudapi = require('./cloudapi');
 const ai = require('./ai');
 
+const APP_VERSION = '1.3.0';
+const REPO = 'atul7275/whatsapp-automater';
+
 const PORT = process.env.PORT || 3000;
 const DATA = path.join(__dirname, '..', 'data');
 const SESSION_DIR = path.join(DATA, 'session');
 const UPLOAD_DIR = path.join(DATA, 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(SESSION_DIR, { recursive: true });
+
+// Mirror console output to data/engine.log so failures are diagnosable even
+// when the engine runs hidden (the tray launches it with no visible window).
+try {
+  const logStream = fs.createWriteStream(path.join(DATA, 'engine.log'), { flags: 'a' });
+  const tee = (orig) => (...a) => { try { logStream.write(a.map(String).join(' ') + '\n'); } catch (_) {} orig(...a); };
+  console.log = tee(console.log.bind(console));
+  console.error = tee(console.error.bind(console));
+  process.on('uncaughtException', (e) => console.error('[uncaught]', e && e.stack ? e.stack : e));
+  process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e && e.stack ? e.stack : e));
+} catch (_) {}
+console.log(`[boot] BulkWPSender engine v${APP_VERSION} starting (node ${process.version}, ${process.platform})`);
 
 const AUTOMATION_DAILY_CAP = 50; // hard safety ceiling per number
 
@@ -622,5 +639,46 @@ app.get('/api/campaigns/:id/export.xlsx', (req, res) => {
   res.send(buf);
 });
 
+// --- version / auto-update ---------------------------------------------
+function semverGt(a, b) {
+  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) > (pb[i] || 0)) return true; if ((pa[i] || 0) < (pb[i] || 0)) return false; }
+  return false;
+}
+let updateAssetUrl = null; // remembered from the last successful version check
+
+app.get('/api/version', async (req, res) => {
+  const out = { current: APP_VERSION, latest: null, updateAvailable: false, url: null, error: null };
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`,
+      { headers: { 'User-Agent': 'BulkWPSender', Accept: 'application/vnd.github+json' } });
+    if (!r.ok) throw new Error('GitHub ' + r.status);
+    const d = await r.json();
+    out.latest = String(d.tag_name || '').replace(/^v/, '');
+    out.url = d.html_url;
+    const asset = (d.assets || []).find(a => /\.exe$/i.test(a.name));
+    updateAssetUrl = asset ? asset.browser_download_url : null;
+    out.updateAvailable = !!out.latest && semverGt(out.latest, APP_VERSION);
+  } catch (e) { out.error = String(e.message || e); }
+  res.json(out);
+});
+
+app.post('/api/update', async (req, res) => {
+  if (process.platform !== 'win32')
+    return res.status(400).json({ error: 'Auto-update runs on Windows only — download the installer from the release page.' });
+  const url = (req.body && req.body.assetUrl) || updateAssetUrl;
+  if (!url) return res.status(400).json({ error: 'No installer found. Check for updates first, then retry.' });
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': 'BulkWPSender' } });
+    if (!r.ok) throw new Error('download ' + r.status);
+    const tmp = path.join(os.tmpdir(), 'BulkWPSender-Setup.exe');
+    fs.writeFileSync(tmp, Buffer.from(await r.arrayBuffer()));
+    // launch the installer detached; it updates in place over this install
+    spawn(tmp, [], { detached: true, stdio: 'ignore' }).unref();
+    console.log('[update] launched installer', tmp);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
 // Bind to loopback only — never expose the API to the local network.
-app.listen(PORT, '127.0.0.1', () => console.log(`[api] BulkWPSender engine on http://localhost:${PORT}`));
+app.listen(PORT, '127.0.0.1', () => console.log(`[api] BulkWPSender engine v${APP_VERSION} on http://localhost:${PORT}`));

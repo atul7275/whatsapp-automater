@@ -50,15 +50,24 @@ if (-not (Test-Path (Join-Path $PhpDir "php.exe"))) {
   New-Item -ItemType Directory -Force -Path $PhpDir | Out-Null
   Expand-Archive -Path $zip -DestinationPath $PhpDir -Force
   Remove-Item $zip -Force
-  # minimal php.ini: enable curl (panel -> engine), plus common extensions
+  # minimal php.ini. IMPORTANT: extension_dir must be ABSOLUTE — a relative
+  # "ext" resolves against the process CWD (the app root), not the php folder,
+  # so curl would fail to load and every panel page would break.
+  $extDir = (Join-Path $PhpDir "ext") -replace '\\', '/'
+  $errLog = (Join-Path $Root "data\php-error.log") -replace '\\', '/'
   @"
-extension_dir = "ext"
+extension_dir = "$extDir"
 extension=curl
 extension=openssl
 extension=mbstring
 extension=fileinfo
+log_errors = On
+error_log = "$errLog"
 "@ | Set-Content -Encoding ASCII -Path (Join-Path $PhpDir "php.ini")
 } else { Write-Host "[2/4] PHP already present - skipping." }
+
+# make sure the data dir exists (PHP error_log + engine DB live here)
+New-Item -ItemType Directory -Force -Path (Join-Path $Root "data") | Out-Null
 
 # --- App dependencies (Node modules + Chromium) -----------------------------
 Write-Host "[3/4] Installing app dependencies (downloads Chromium - a few minutes) ..."

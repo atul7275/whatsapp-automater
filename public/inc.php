@@ -76,7 +76,9 @@ function layout_head($title) {
 }
 
 function layout_foot() {
-    echo '</main><footer>Local tool · whatsapp-web.js · Use responsibly — only message contacts who opted in.</footer></body></html>';
+    echo '</main><footer>Local tool · whatsapp-web.js · <span id="appVer"></span> Use responsibly — only message contacts who opted in.</footer>';
+    echo '<script>fetch(window.ENGINE+"/api/version").then(r=>r.json()).then(v=>{if(v.current)document.getElementById("appVer").textContent="v"+v.current+" · ";}).catch(()=>{});</script>';
+    echo '</body></html>';
 }
 
 function flash($msg, $type = 'ok') {
