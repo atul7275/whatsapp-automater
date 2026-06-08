@@ -22,7 +22,7 @@ try {
   $Modules  = Join-Path $Root "engine\node_modules"
   $PanelDir = Join-Path $Root "public"
   $Data     = Join-Path $Root "data"
-  $Url      = "http://localhost:8080"
+  $Url      = "http://127.0.0.1:8080"
 
   New-Item -ItemType Directory -Force -Path $Data | Out-Null
 
@@ -49,7 +49,7 @@ try {
     Start-Sleep -Seconds 3
     if (-not $script:phpProc -or $script:phpProc.HasExited) {
       $script:phpProc = Start-Process -FilePath $PhpExe `
-        -ArgumentList "-c `"$PhpIni`" -S localhost:8080 -t `"$PanelDir`"" `
+        -ArgumentList "-c `"$PhpIni`" -S 127.0.0.1:8080 -t `"$PanelDir`"" `
         -WorkingDirectory $Root -WindowStyle Hidden -PassThru
     }
   }

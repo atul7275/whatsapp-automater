@@ -27,7 +27,7 @@ const { render } = require('./template');
 const cloudapi = require('./cloudapi');
 const ai = require('./ai');
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const REPO = 'atul7275/whatsapp-automater';
 
 const PORT = process.env.PORT || 3000;

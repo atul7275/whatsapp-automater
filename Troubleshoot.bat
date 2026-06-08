@@ -37,12 +37,12 @@ echo Close those two windows to stop the app.
 echo.
 start "BulkWPSender Engine (debug)" "%~dp0runtime\node\node.exe" "%~dp0engine\index.js"
 timeout /t 3 /nobreak >nul
-start "BulkWPSender Panel (debug)" "%~dp0runtime\php\php.exe" -c "%~dp0runtime\php\php.ini" -S localhost:8080 -t "%~dp0public"
+start "BulkWPSender Panel (debug)" "%~dp0runtime\php\php.exe" -c "%~dp0runtime\php\php.ini" -S 127.0.0.1:8080 -t "%~dp0public"
 timeout /t 3 /nobreak >nul
-start "" "http://localhost:8080"
+start "" "http://127.0.0.1:8080"
 
 echo.
-echo If the page opened at http://localhost:8080, it is working.
+echo If the page opened at http://127.0.0.1:8080, it is working.
 echo If a server window showed an error, copy it and send it for help.
 echo.
 echo Logs (if any):  %~dp0data\engine.log
