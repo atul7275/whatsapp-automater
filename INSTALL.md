@@ -68,6 +68,40 @@ edit `start-servers.bat` (panel port) and set `PORT` for the engine.
 
 ---
 
+## Your data, stopping, restarting & updates
+
+**Where everything is stored.** All your data lives in one folder inside the
+install directory:
+```
+<install folder>\data\
+├─ app.db        accounts, contacts, lists, campaigns, history, opt-outs, settings
+├─ session\      linked WhatsApp logins (so you don't re-scan)
+└─ uploads\      campaign attachments
+```
+Back it up by copying `data\`. Restore by copying it back.
+
+**Stop the app.** Right-click the tray icon → **Quit**, or Start Menu →
+*Stop BulkWPSender*. This stops both servers; your data stays on disk.
+
+**Restart.** Open the **BulkWPSender** shortcut again. Everything is retained —
+accounts, contacts, lists, history — and WhatsApp sessions are restored, so no
+re-scanning the QR.
+
+**Updates keep your data.** The installer only replaces the program files
+(`engine\`, `public\`); it **never touches `data\`**. The database also
+auto-migrates (new columns added, existing rows preserved). So updating from any
+version keeps all accounts/contacts/lists/campaigns.
+
+**How updating works.** When the dashboard shows *Update available → Update now*,
+the app downloads the new installer, **stops itself**, installs **silently in
+place** (data preserved), and **relaunches** — no manual steps. You can also just
+download the new `.exe` from the releases page and run it over the existing
+install; same result.
+
+**Fully removing it.** Uninstall from *Apps & Features*. The uninstaller removes
+the program and the `data\` folder (your accounts/contacts). If you want to keep
+your data, copy the `data\` folder out first.
+
 ## Troubleshooting
 
 - **Nothing happens when I launch it** → the bundled Node/PHP probably didn't

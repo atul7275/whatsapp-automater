@@ -8,13 +8,17 @@
 ; ============================================================================
 
 #define AppName "BulkWPSender"
-#define AppVersion "1.0.0"
+#define AppVersion "1.7.0"
 #define AppPublisher "BulkWPSender"
 
 [Setup]
+; Stable AppId so new versions install OVER the existing one (same folder,
+; one uninstaller) — this is what keeps the data\ folder across updates.
+AppId={{B7C3E2A1-9D54-4F6B-A0E2-1234567890AB}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+VersionInfoVersion={#AppVersion}
 ; Install per-user into a writable location (the app writes its own data/ DB),
 ; so no admin rights are needed and runtime writes never get blocked.
 PrivilegesRequired=lowest

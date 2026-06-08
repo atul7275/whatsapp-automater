@@ -17,7 +17,7 @@
 const path = require('path');
 const fs = require('fs');
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const REPO = 'atul7275/whatsapp-automater';
 const PORT = process.env.PORT || 3000;
 const DATA = path.join(__dirname, '..', 'data');
@@ -717,11 +717,28 @@ app.post('/api/update', async (req, res) => {
   try {
     const r = await fetch(url, { headers: { 'User-Agent': 'BulkWPSender' } });
     if (!r.ok) throw new Error('download ' + r.status);
-    const tmp = path.join(os.tmpdir(), 'BulkWPSender-Setup.exe');
-    fs.writeFileSync(tmp, Buffer.from(await r.arrayBuffer()));
-    // launch the installer detached; it updates in place over this install
-    spawn(tmp, [], { detached: true, stdio: 'ignore' }).unref();
-    console.log('[update] launched installer', tmp);
+    const installer = path.join(os.tmpdir(), 'BulkWPSender-Setup.exe');
+    fs.writeFileSync(installer, Buffer.from(await r.arrayBuffer()));
+
+    // Clean self-update: a separate PowerShell process stops THIS app (only our
+    // own node/php under the install dir — never the user's other node apps),
+    // installs silently (which preserves data\), then relaunches the tray.
+    const appRoot = path.join(__dirname, '..');
+    const updater = path.join(os.tmpdir(), 'bwps-update.ps1');
+    const ps = `
+$root = ${JSON.stringify(appRoot)}
+$installer = ${JSON.stringify(installer)}
+Start-Sleep -Seconds 2
+Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root) -and ($_.Name -eq 'node.exe' -or $_.Name -eq 'php.exe') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 1
+Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+Start-Sleep -Seconds 2
+Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',(Join-Path $root 'tray.ps1')
+`;
+    fs.writeFileSync(updater, ps);
+    spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', updater],
+      { detached: true, stdio: 'ignore' }).unref();
+    console.log('[update] updater launched; this engine will exit for the in-place update');
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
