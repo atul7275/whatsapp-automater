@@ -18,6 +18,7 @@ const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const XLSX = require('xlsx');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
@@ -27,7 +28,7 @@ const { render } = require('./template');
 const cloudapi = require('./cloudapi');
 const ai = require('./ai');
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const REPO = 'atul7275/whatsapp-automater';
 
 const PORT = process.env.PORT || 3000;
@@ -127,11 +128,18 @@ function sentTodayForAccount(accountId) {
 }
 
 function effectiveCap(campaign, rec) {
+  const acc = db.prepare(`SELECT daily_cap FROM accounts WHERE id=?`).get(rec.id) || {};
+  const accCap = acc.daily_cap > 0 ? acc.daily_cap : 0;
   if (rec.type === 'automation') {
-    const lim = campaign.daily_limit > 0 ? campaign.daily_limit : AUTOMATION_DAILY_CAP;
-    return Math.min(lim, AUTOMATION_DAILY_CAP);
+    let cap = AUTOMATION_DAILY_CAP;                              // hard 50 ceiling
+    if (campaign.daily_limit > 0) cap = Math.min(cap, campaign.daily_limit);
+    if (accCap > 0) cap = Math.min(cap, accCap);
+    return cap;
   }
-  return campaign.daily_limit; // cloud api: respect user's number (0 = unlimited)
+  // cloud api: 0 = unlimited unless an account cap is set
+  let cap = campaign.daily_limit > 0 ? campaign.daily_limit : 0;
+  if (accCap > 0) cap = cap > 0 ? Math.min(cap, accCap) : accCap;
+  return cap;
 }
 
 function withinActiveHours(campaign) {
@@ -313,7 +321,7 @@ const upload = multer({ dest: UPLOAD_DIR });
 
 // --- accounts -----------------------------------------------------------
 app.get('/api/accounts', (req, res) => {
-  const rows = db.prepare(`SELECT id, name, type, cloud_phone_id, cloud_lang, created_at FROM accounts ORDER BY id`).all();
+  const rows = db.prepare(`SELECT id, name, type, cloud_phone_id, cloud_lang, daily_cap, created_at FROM accounts ORDER BY id`).all();
   for (const r of rows) {
     const rec = accounts.get(r.id);
     r.state = rec ? rec.state : 'offline';
@@ -331,11 +339,18 @@ app.post('/api/accounts', (req, res) => {
   if (type === 'cloud_api' && (!b.cloud_phone_id || !b.cloud_token))
     return res.status(400).json({ error: 'Cloud API needs phone number ID and token' });
 
-  const info = db.prepare(`INSERT INTO accounts (name, type, cloud_phone_id, cloud_token, cloud_lang) VALUES (?,?,?,?,?)`)
-    .run(b.name, type, b.cloud_phone_id || null, b.cloud_token || null, b.cloud_lang || 'en_US');
+  const cap = Math.max(0, parseInt(b.daily_cap) || 0);
+  const info = db.prepare(`INSERT INTO accounts (name, type, cloud_phone_id, cloud_token, cloud_lang, daily_cap) VALUES (?,?,?,?,?,?)`)
+    .run(b.name, type, b.cloud_phone_id || null, b.cloud_token || null, b.cloud_lang || 'en_US', cap);
   const acc = db.prepare(`SELECT * FROM accounts WHERE id=?`).get(info.lastInsertRowid);
   bootAccount(acc);
   res.json({ id: acc.id });
+});
+
+app.post('/api/accounts/:id/cap', (req, res) => {
+  const cap = Math.max(0, parseInt((req.body || {}).daily_cap) || 0);
+  db.prepare(`UPDATE accounts SET daily_cap=? WHERE id=?`).run(cap, +req.params.id);
+  res.json({ ok: true });
 });
 
 app.post('/api/accounts/:id/delete', async (req, res) => {
@@ -353,23 +368,39 @@ app.post('/api/accounts/:id/logout', async (req, res) => {
   res.json({ ok: true });
 });
 
-// --- settings (OpenAI + opt-out) ---------------------------------------
+// --- settings (OpenAI + opt-out + defaults + panel password) -----------
+const DEF_KEYS = ['def_min_delay', 'def_max_delay', 'def_daily_limit', 'def_batch_size',
+  'def_batch_pause', 'def_active_from', 'def_active_to', 'def_human_typing', 'def_natural_timing', 'def_micro_breaks'];
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+
 app.get('/api/settings', (req, res) => {
-  res.json({
+  const out = {
     openai_model: getSetting('openai_model', 'gpt-4o-mini'),
     openai_set: !!getSetting('openai_api_key'),
     optout_keywords: getSetting('optout_keywords', ''),
     optout_reply: getSetting('optout_reply', ''),
-  });
+    panel_password_set: !!getSetting('panel_password_hash'),
+  };
+  for (const k of DEF_KEYS) out[k] = getSetting(k, '');
+  res.json(out);
 });
 app.post('/api/settings', (req, res) => {
   const b = req.body || {};
-  // empty key = leave unchanged (so a blank field never wipes a saved key)
   if (typeof b.openai_api_key === 'string' && b.openai_api_key.trim() !== '') setSetting('openai_api_key', b.openai_api_key.trim());
   if (b.openai_model) setSetting('openai_model', b.openai_model);
   if (typeof b.optout_keywords === 'string') setSetting('optout_keywords', b.optout_keywords);
   if (typeof b.optout_reply === 'string') setSetting('optout_reply', b.optout_reply);
+  for (const k of DEF_KEYS) if (b[k] !== undefined && b[k] !== '') setSetting(k, String(b[k]));
+  // panel password: non-empty sets it; explicit clear flag removes it
+  if (typeof b.panel_password === 'string' && b.panel_password.trim() !== '') setSetting('panel_password_hash', sha(b.panel_password.trim()));
+  if (b.panel_password_clear) setSetting('panel_password_hash', '');
   res.json({ ok: true });
+});
+
+app.post('/api/auth/check', (req, res) => {
+  const hash = getSetting('panel_password_hash');
+  if (!hash) return res.json({ ok: true });            // no password set
+  res.json({ ok: sha((req.body || {}).password || '') === hash });
 });
 
 // --- AI assist ----------------------------------------------------------
@@ -614,6 +645,12 @@ app.post('/api/campaigns/:id/:action', (req, res) => {
     db.prepare(`UPDATE campaigns SET status='scheduled', scheduled_at=? WHERE id=?`).run(when, id);
   } else if (action === 'unschedule') {
     db.prepare(`UPDATE campaigns SET status='draft', scheduled_at=NULL WHERE id=?`).run(id);
+  } else if (action === 'retry') {
+    // requeue failed (and optionally invalid) messages, then pause so the user starts it
+    const cols = req.body && req.body.include_invalid ? `('failed','invalid')` : `('failed')`;
+    const r = db.prepare(`UPDATE messages SET status='pending', error=NULL, sent_at=NULL WHERE campaign_id=? AND status IN ${cols}`).run(id);
+    if (c.status === 'done') db.prepare(`UPDATE campaigns SET status='paused' WHERE id=?`).run(id);
+    return res.json({ ok: true, requeued: r.changes });
   } else if (action === 'delete') {
     db.prepare(`DELETE FROM messages WHERE campaign_id=?`).run(id);
     db.prepare(`DELETE FROM campaigns WHERE id=?`).run(id);

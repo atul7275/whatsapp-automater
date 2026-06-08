@@ -6,7 +6,7 @@ $act = $_POST['action'] ?? '';
 if ($act === 'schedule') {
     api_post_json("/api/campaigns/$id/schedule", ['scheduled_at' => $_POST['scheduled_at'] ?? '']);
     header("Location: campaign.php?id=$id"); exit;
-} elseif ($act && in_array($act, ['start', 'pause', 'delete', 'unschedule'], true)) {
+} elseif ($act && in_array($act, ['start', 'pause', 'delete', 'unschedule', 'retry'], true)) {
     api_post("/api/campaigns/$id/$act");
     if ($act === 'delete') { header('Location: campaigns.php'); exit; }
     header("Location: campaign.php?id=$id"); exit;
@@ -34,6 +34,9 @@ $pct = $p['total'] > 0 ? round($done / $p['total'] * 100) : 0;
         <form method="post"><input type="hidden" name="action" value="start"><button class="btn">▶ Start now</button></form>
       <?php else: ?>
         <form method="post"><input type="hidden" name="action" value="pause"><button class="btn warn">⏸ Pause</button></form>
+      <?php endif; ?>
+      <?php if ((int)$p['failed'] > 0): ?>
+        <form method="post"><input type="hidden" name="action" value="retry"><button class="btn ghost">↻ Retry failed (<?= (int)$p['failed'] ?>)</button></form>
       <?php endif; ?>
       <a class="btn ghost" href="<?= h(ENGINE) ?>/api/campaigns/<?= $id ?>/export.xlsx">⬇ Export results</a>
       <form method="post" onsubmit="return confirm('Delete this campaign and its queue?')">

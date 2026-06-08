@@ -21,6 +21,10 @@ and what's still missing across architecture, security, bugs, UX and settings.
 - **Campaign scheduling.** Schedule a start date/time; the engine auto-starts it
   when due. Includes a **duration estimate** (composer + detail page) and a
   **pre-send confirmation** summarizing account, audience size and variants.
+- **Settings expansion.** Editable global campaign defaults (pre-fill composer),
+  **per-account daily cap** (within the 50 ceiling for automation), and an
+  optional **panel password** (session login gate).
+- **Retry-failed.** One-click requeue of failed messages on a campaign.
 
 ## 🔒 Security — still worth knowing
 - **No login on the panel.** Anyone with access to the machine can use it. Fine
@@ -46,14 +50,11 @@ and what's still missing across architecture, security, bugs, UX and settings.
   country code; storing phones as text in the sheet is safest.
 
 ## 🏗️ Architecture / features — remaining gaps
-1. **No global defaults / per-account daily cap.** The 50/day cap is hard-coded;
-   surface it (and other defaults) on the Settings page.
-2. **Cloud API opt-outs** need a Meta webhook (public URL) — currently only
+1. **Cloud API opt-outs** need a Meta webhook (public URL) — currently only
    automation accounts auto-handle STOP. Document/handle for Cloud API.
-3. **No panel password.** Single-user local tool; add optional auth if shared.
-4. **No send retry** for transient failures (a "retry failed" button).
-5. **Single worker per account, in-process.** Fine for this scale; if it ever
+2. **Single worker per account, in-process.** Fine for this scale; if it ever
    grows, move the queue to a proper job runner.
+3. **Code-signing** the installer (removes SmartScreen warning) — needs a paid cert.
 
 ## 🧭 User journey — observations
 - Onboarding flow (Dashboard → Accounts → Contacts → Campaign) is clear, with
@@ -77,5 +78,6 @@ and what's still missing across architecture, security, bugs, UX and settings.
 2. ~~STOP/opt-out auto-handler (compliance).~~ ✅
 3. ~~Results export (Excel).~~ ✅
 4. ~~Campaign scheduling + duration estimate + pre-send confirm.~~ ✅
-5. Settings: global defaults, per-account cap, optional panel password.
-6. Retry-failed button; Cloud API opt-out webhook.
+5. ~~Settings: global defaults, per-account cap, optional panel password.~~ ✅
+6. ~~Retry-failed button.~~ ✅
+7. Cloud API opt-out webhook; installer code-signing.

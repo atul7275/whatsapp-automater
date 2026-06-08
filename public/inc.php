@@ -87,7 +87,8 @@ function layout_head($title) {
         $active = ($file === $cur || ($cur === 'campaign.php' && $file === 'campaigns.php')) ? ' class="active"' : '';
         echo '<a' . $active . ' href="' . $file . '">' . nav_icon($file) . '<span>' . h($label) . '</span></a>';
     }
-    echo '</nav><div class="sidebar-foot"><span id="appVer">v—</span><span id="connDot" class="dot off" title="engine status"></span></div></aside>';
+    $lock = !empty($_SESSION['bw_auth']) ? '<a href="?__logout=1" class="lock" title="Lock panel">&#128274;</a>' : '';
+    echo '</nav><div class="sidebar-foot"><span id="appVer">v—</span><span id="connDot" class="dot off" title="engine status"></span>' . $lock . '</div></aside>';
     echo '<div class="content"><header class="topbar"><h2>' . h($title) . '</h2></header><main>';
 }
 
@@ -100,3 +101,33 @@ function layout_foot() {
 function flash($msg, $type = 'ok') {
     echo '<div class="flash ' . h($type) . '">' . h($msg) . '</div>';
 }
+
+/* ---- optional panel password gate ------------------------------------- */
+function login_page($err = '') {
+    echo '<!doctype html><html><head><meta charset="utf-8"><title>Sign in · BulkWPSender</title>';
+    echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
+    echo '<link rel="stylesheet" href="assets/style.css"></head><body class="login-body">';
+    echo '<form method="post" class="login-card">';
+    echo '<div class="login-logo"><span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></span> BulkWPSender</div>';
+    if ($err) echo '<div class="flash err">' . h($err) . '</div>';
+    echo '<label>Password<input type="password" name="__password" autofocus required></label>';
+    echo '<input type="hidden" name="__login" value="1">';
+    echo '<button class="btn" style="width:100%;justify-content:center;margin-top:10px">Sign in</button>';
+    echo '</form></body></html>';
+}
+
+function panel_gate() {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    if (isset($_GET['__logout'])) { $_SESSION = []; session_destroy(); header('Location: index.php'); exit; }
+    if (!empty($_SESSION['bw_auth'])) return;
+    $s = api_get('/api/settings');
+    if (isset($s['__error']) || empty($s['panel_password_set'])) return; // no gate (or engine down)
+    if (($_POST['__login'] ?? '') === '1') {
+        $r = api_post_json('/api/auth/check', ['password' => $_POST['__password'] ?? '']);
+        if (!empty($r['ok'])) { $_SESSION['bw_auth'] = true; header('Location: ' . $_SERVER['REQUEST_URI']); exit; }
+        login_page('Incorrect password.'); exit;
+    }
+    login_page(); exit;
+}
+
+panel_gate();

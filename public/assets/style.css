@@ -160,6 +160,15 @@ code { background: var(--muted-soft); padding: 2px 6px; border-radius: 5px; font
   padding: 10px 13px; margin: 8px 0; font-size: 14px; max-width: 80%; }
 fieldset .row label { font-weight: 500; }
 
+/* ---- login page ---- */
+.login-body { display: grid; place-items: center; min-height: 100vh; background: var(--sidebar); }
+.login-card { background: var(--panel); border-radius: 14px; padding: 28px; width: 320px; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+.login-logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; margin-bottom: 18px; }
+.login-card label { display: block; font-size: 13px; font-weight: 600; color: #344054; margin-bottom: 5px; }
+.login-card input[type=password] { width: 100%; padding: 10px 12px; border: 1px solid #d0d5dd; border-radius: 8px; font: inherit; }
+.sidebar-foot .lock { margin-left: auto; color: #9aa7bd; text-decoration: none; font-size: 14px; }
+.sidebar-foot .lock:hover { color: #fff; }
+
 /* ---- responsive: collapse sidebar to a top bar ---- */
 @media (max-width: 820px) {
   .app { flex-direction: column; }

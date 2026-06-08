@@ -51,6 +51,8 @@ each running its **own separate campaign queue**.
   (optional auto-reply); every campaign skips opt-outs; `START` re-subscribes
 - ⏰ **Scheduling** — set a future start; auto-starts when due (with duration estimate + pre-send confirm)
 - 📊 **Excel export** of per-campaign results
+- ↻ **Retry failed** messages in one click
+- ⚙️ **Global campaign defaults**, **per-account daily cap**, optional **panel password**
 - Live progress bars, per-message logs, pause / resume / delete
 
 ---

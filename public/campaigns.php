@@ -110,19 +110,21 @@ layout_head('Campaigns');
       </label>
     </div>
 
+    <?php $d = fn($k,$v)=>h($ai[$k] ?? $v); $af=(int)($ai['def_active_from']??9); $at=(int)($ai['def_active_to']??21);
+          $ck = fn($k)=>(($ai[$k]??'1')==='1')?'checked':''; ?>
     <fieldset>
       <legend>Human-like behavior</legend>
       <div class="checks">
-        <label class="chk"><input type="checkbox" name="human_typing" checked> Typing simulation + presence/seen</label>
-        <label class="chk"><input type="checkbox" name="natural_timing" checked> Natural non-uniform timing</label>
-        <label class="chk"><input type="checkbox" name="micro_breaks" checked> Random micro-breaks</label>
+        <label class="chk"><input type="checkbox" name="human_typing" <?= $ck('def_human_typing') ?>> Typing simulation + presence/seen</label>
+        <label class="chk"><input type="checkbox" name="natural_timing" <?= $ck('def_natural_timing') ?>> Natural non-uniform timing</label>
+        <label class="chk"><input type="checkbox" name="micro_breaks" <?= $ck('def_micro_breaks') ?>> Random micro-breaks</label>
       </div>
       <div class="row">
         <label>Active from
-          <select name="active_from"><?php for($i=0;$i<24;$i++) echo '<option value="'.$i.'"'.($i==9?' selected':'').'>'.sprintf('%02d:00',$i).'</option>'; ?><option value="">always</option></select>
+          <select name="active_from"><?php for($i=0;$i<24;$i++) echo '<option value="'.$i.'"'.($i==$af?' selected':'').'>'.sprintf('%02d:00',$i).'</option>'; ?><option value="">always</option></select>
         </label>
         <label>Active to
-          <select name="active_to"><?php for($i=0;$i<24;$i++) echo '<option value="'.$i.'"'.($i==21?' selected':'').'>'.sprintf('%02d:00',$i).'</option>'; ?><option value="">always</option></select>
+          <select name="active_to"><?php for($i=0;$i<24;$i++) echo '<option value="'.$i.'"'.($i==$at?' selected':'').'>'.sprintf('%02d:00',$i).'</option>'; ?><option value="">always</option></select>
         </label>
       </div>
     </fieldset>
@@ -130,11 +132,11 @@ layout_head('Campaigns');
     <fieldset>
       <legend>Throttling (anti-ban)</legend>
       <div class="row">
-        <label>Min delay (sec)<input type="number" name="min_delay" value="20" min="3"></label>
-        <label>Max delay (sec)<input type="number" name="max_delay" value="60" min="3"></label>
-        <label>Daily limit<input type="number" name="daily_limit" id="dailyLimit" value="50" min="0"></label>
-        <label>Batch size<input type="number" name="batch_size" value="15" min="0"></label>
-        <label>Batch pause (min)<input type="number" name="batch_pause" value="15" min="0"></label>
+        <label>Min delay (sec)<input type="number" name="min_delay" value="<?= $d('def_min_delay','20') ?>" min="3"></label>
+        <label>Max delay (sec)<input type="number" name="max_delay" value="<?= $d('def_max_delay','60') ?>" min="3"></label>
+        <label>Daily limit<input type="number" name="daily_limit" id="dailyLimit" value="<?= $d('def_daily_limit','50') ?>" min="0"></label>
+        <label>Batch size<input type="number" name="batch_size" value="<?= $d('def_batch_size','15') ?>" min="0"></label>
+        <label>Batch pause (min)<input type="number" name="batch_pause" value="<?= $d('def_batch_pause','15') ?>" min="0"></label>
       </div>
       <p class="muted small" id="capNote">Automation is hard-capped at 50/day per number.</p>
     </fieldset>

@@ -116,6 +116,9 @@ ensureColumns('campaigns', {
 ensureColumns('contacts', {
   unsubscribed: 'INTEGER NOT NULL DEFAULT 0',
 });
+ensureColumns('accounts', {
+  daily_cap: 'INTEGER NOT NULL DEFAULT 0',           // 0 = use campaign limit / 50 ceiling
+});
 
 // --- tiny settings helpers -------------------------------------------------
 const getSetting = (k, d = null) => {
@@ -131,5 +134,13 @@ if (getSetting('optout_keywords') === null)
   setSetting('optout_keywords', 'stop, unsubscribe, cancel, remove me, opt out');
 if (getSetting('optout_reply') === null)
   setSetting('optout_reply', "You've been unsubscribed and won't receive further messages. Reply START to opt back in.");
+
+// default campaign settings (pre-fill the composer); seeded once
+const DEFAULTS = {
+  def_min_delay: '20', def_max_delay: '60', def_daily_limit: '50',
+  def_batch_size: '15', def_batch_pause: '15', def_active_from: '9', def_active_to: '21',
+  def_human_typing: '1', def_natural_timing: '1', def_micro_breaks: '1',
+};
+for (const [k, v] of Object.entries(DEFAULTS)) if (getSetting(k) === null) setSetting(k, v);
 
 module.exports = { db, getSetting, setSetting };
