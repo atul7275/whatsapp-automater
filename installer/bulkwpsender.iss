@@ -8,7 +8,7 @@
 ; ============================================================================
 
 #define AppName "BulkWPSender"
-#define AppVersion "1.7.0"
+#define AppVersion "1.8.0"
 #define AppPublisher "BulkWPSender"
 
 [Setup]

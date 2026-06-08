@@ -160,6 +160,14 @@ code { background: var(--muted-soft); padding: 2px 6px; border-radius: 5px; font
   padding: 10px 13px; margin: 8px 0; font-size: 14px; max-width: 80%; }
 fieldset .row label { font-weight: 500; }
 
+/* ---- global update banner ---- */
+.update-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  background: linear-gradient(90deg, #e7f6ef, #eef6ff); border: 1px solid #a6e9cd;
+  border-radius: 10px; padding: 11px 15px; margin-bottom: 18px; font-size: 14px;
+}
+.update-bar .ub-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
 /* ---- login page ---- */
 .login-body { display: grid; place-items: center; min-height: 100vh; background: var(--sidebar); }
 .login-card { background: var(--panel); border-radius: 14px; padding: 28px; width: 320px; box-shadow: 0 10px 40px rgba(0,0,0,.3); }

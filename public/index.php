@@ -17,8 +17,6 @@ $running = array_filter($campaigns['rows'] ?? [], fn($c) => $c['status'] === 'ru
 ?>
 <h1>Dashboard</h1>
 
-<div id="updateBanner"></div>
-
 <div class="stats-row">
   <div class="stat"><span><?= count($accs) ?></span>Accounts</div>
   <div class="stat ok"><span><?= count($ready) ?></span>Connected</div>
@@ -58,40 +56,4 @@ $running = array_filter($campaigns['rows'] ?? [], fn($c) => $c['status'] === 'ru
 <?php if (array_filter($accs, fn($a) => in_array($a['state'], ['qr','starting','authenticated']))): ?>
 <script>setTimeout(() => location.reload(), 5000);</script>
 <?php endif; ?>
-
-<script>
-// Check GitHub for a newer release and show a banner with one-click update.
-(async () => {
-  try {
-    const r = await fetch(window.ENGINE + '/api/version');
-    const v = await r.json();
-    const el = document.getElementById('updateBanner');
-    if (!el) return;
-    if (v.updateAvailable) {
-      el.innerHTML =
-        `<div class="flash ok" style="display:flex;align-items:center;gap:12px;justify-content:space-between">
-           <span>🎉 <strong>Update available:</strong> v${v.current} → <strong>v${v.latest}</strong></span>
-           <span>
-             <button class="btn small" id="updateNow">Update now</button>
-             <a class="btn ghost small" href="${v.url}" target="_blank">Release notes</a>
-           </span>
-         </div>`;
-      const btn = document.getElementById('updateNow');
-      btn.onclick = async () => {
-        if (!confirm('Download v' + v.latest + ' and run the installer now? The app will restart during the update.')) return;
-        btn.disabled = true; btn.textContent = 'Downloading…';
-        try {
-          const rr = await fetch(window.ENGINE + '/api/update', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ assetUrl: null })
-          });
-          const dd = await rr.json();
-          if (rr.ok) { btn.textContent = 'Installer launched — follow its prompts.'; }
-          else { btn.disabled = false; btn.textContent = 'Update now'; alert('Update failed: ' + (dd.error || 'unknown') + '\n\nYou can download it manually from the release page.'); }
-        } catch (e) { btn.disabled = false; btn.textContent = 'Update now'; alert('Update failed: ' + e.message); }
-      };
-    }
-  } catch (_) { /* offline or engine down — no banner */ }
-})();
-</script>
 <?php layout_foot(); ?>

@@ -110,12 +110,33 @@ function layout_head($title) {
     }
     $lock = !empty($_SESSION['bw_auth']) ? '<a href="?__logout=1" class="lock" title="Lock panel">&#128274;</a>' : '';
     echo '</nav><div class="sidebar-foot"><span id="appVer">v—</span><span id="connDot" class="dot off" title="engine status"></span>' . $lock . '</div></aside>';
-    echo '<div class="content"><header class="topbar"><h2>' . h($title) . '</h2></header><main>';
+    echo '<div class="content"><header class="topbar"><h2>' . h($title) . '</h2></header><main><div id="updateBanner"></div>';
 }
 
 function layout_foot() {
     echo '</main></div></div>';
-    echo '<script>(function(){fetch(window.ENGINE+"/api/version").then(r=>r.json()).then(v=>{var a=document.getElementById("appVer");if(a&&v.current)a.textContent="v"+v.current;var d=document.getElementById("connDot");if(d)d.className="dot on";}).catch(function(){var d=document.getElementById("connDot");if(d)d.className="dot off";});})();</script>';
+    // Global: show engine version + status, and a one-click update notice on every page.
+    echo <<<'JS'
+<script>(function(){
+  fetch(window.ENGINE+"/api/version").then(function(r){return r.json();}).then(function(v){
+    var a=document.getElementById("appVer"); if(a&&v.current)a.textContent="v"+v.current;
+    var d=document.getElementById("connDot"); if(d)d.className="dot on";
+    if(v.updateAvailable){
+      var el=document.getElementById("updateBanner"); if(!el)return;
+      el.innerHTML='<div class="update-bar"><span>✨ <strong>New version v'+v.latest+'</strong> available (you have v'+v.current+'). It updates in place and keeps all your data.</span><span class="ub-actions"><button class="btn small" id="bwUpd">Update now</button> <a class="btn ghost small" href="'+v.url+'" target="_blank">Release notes</a></span></div>';
+      document.getElementById("bwUpd").onclick=function(){
+        if(!confirm("Update to v"+v.latest+"?\n\nThe app will stop, install the new version in place (your accounts, contacts, lists and history are kept), and reopen automatically."))return;
+        var b=this; b.disabled=true; b.textContent="Updating…";
+        fetch(window.ENGINE+"/api/update",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"})
+          .then(function(r){return r.json();}).then(function(d){
+            if(d.error){b.disabled=false;b.textContent="Update now";alert("Update failed: "+d.error+"\n\nYou can also download it from the release page.");}
+            else{b.textContent="Updating… the app will reopen shortly.";}
+          }).catch(function(e){b.disabled=false;b.textContent="Update now";alert("Update failed: "+e.message);});
+      };
+    }
+  }).catch(function(){var d=document.getElementById("connDot");if(d)d.className="dot off";});
+})();</script>
+JS;
     echo '</body></html>';
 }
 
