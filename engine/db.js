@@ -72,8 +72,28 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- Contact lists (audience segments). Many-to-many via contact_list.
+CREATE TABLE IF NOT EXISTS lists (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS contact_list (
+  contact_id INTEGER NOT NULL,
+  list_id    INTEGER NOT NULL,
+  UNIQUE(contact_id, list_id)
+);
+
+-- Opt-outs: phones that replied STOP (or were added manually). Skipped on send.
+CREATE TABLE IF NOT EXISTS optouts (
+  phone      TEXT PRIMARY KEY,
+  keyword    TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_campaign ON messages(campaign_id, status);
 CREATE INDEX IF NOT EXISTS idx_messages_acct_sent ON messages(account_id, status, sent_at);
+CREATE INDEX IF NOT EXISTS idx_contact_list ON contact_list(list_id, contact_id);
 `);
 
 // --- forward-compatible column migrations (safe to run repeatedly) ----------
@@ -90,6 +110,10 @@ ensureColumns('campaigns', {
   natural_timing: 'INTEGER NOT NULL DEFAULT 1',
   micro_breaks: 'INTEGER NOT NULL DEFAULT 1',
   cloud_template: 'TEXT',
+  list_id: 'INTEGER',                              // NULL = all contacts
+});
+ensureColumns('contacts', {
+  unsubscribed: 'INTEGER NOT NULL DEFAULT 0',
 });
 
 // --- tiny settings helpers -------------------------------------------------
@@ -100,5 +124,11 @@ const getSetting = (k, d = null) => {
 const setSetting = (k, v) =>
   db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
               ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(k, v);
+
+// seed defaults the first time only (don't clobber user edits)
+if (getSetting('optout_keywords') === null)
+  setSetting('optout_keywords', 'stop, unsubscribe, cancel, remove me, opt out');
+if (getSetting('optout_reply') === null)
+  setSetting('optout_reply', "You've been unsubscribed and won't receive further messages. Reply START to opt back in.");
 
 module.exports = { db, getSetting, setSetting };

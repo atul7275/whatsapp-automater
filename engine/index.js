@@ -70,6 +70,7 @@ function bootAutomation(acc) {
   });
   client.on('disconnected', (r) => { rec.state = 'disconnected'; rec.info = null; console.log(`[acc ${acc.id}] disconnected: ${r}`); });
   client.on('auth_failure', () => { rec.state = 'disconnected'; });
+  client.on('message', (m) => handleIncoming(rec, m)); // STOP/opt-out auto-handling
   client.initialize();
 }
 
@@ -140,6 +141,48 @@ function humanDelay(campaign) {
   }
   if (campaign.micro_breaks && Math.random() < 0.06) d += rand(60, 180); // micro-break
   return Math.max(3, d) * 1000;
+}
+
+// --- opt-out / STOP handling (automation accounts) -------------------------
+const RESUB_WORDS = ['start', 'unstop', 'subscribe', 'resume', 'opt in'];
+const normPhone = (s) => String(s || '').replace(/\D/g, '');
+// whole-word / whole-phrase match, so "stop" doesn't fire on "stopping"
+function wordHit(body, kw) {
+  if (!kw) return false;
+  const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\W)${esc}(\\W|$)`, 'i').test(body);
+}
+async function handleIncoming(rec, msg) {
+  try {
+    if (!msg || msg.fromMe) return;
+    const from = msg.from || '';
+    if (!from.endsWith('@c.us')) return;            // ignore groups/status/broadcast
+    const phone = normPhone(from.split('@')[0]);
+    const body = String(msg.body || '').trim().toLowerCase();
+    if (!phone || !body) return;
+
+    if (RESUB_WORDS.some(w => wordHit(body, w))) {
+      db.prepare(`DELETE FROM optouts WHERE phone=?`).run(phone);
+      db.prepare(`UPDATE contacts SET unsubscribed=0 WHERE phone=?`).run(phone);
+      console.log(`[optout] ${phone} re-subscribed`);
+      return;
+    }
+
+    const keywords = (getSetting('optout_keywords', '') || '')
+      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const hit = keywords.find(k => wordHit(body, k));
+    if (!hit) return;
+
+    const already = db.prepare(`SELECT 1 FROM optouts WHERE phone=?`).get(phone);
+    db.prepare(`INSERT OR IGNORE INTO optouts (phone, keyword) VALUES (?, ?)`).run(phone, hit);
+    db.prepare(`UPDATE contacts SET unsubscribed=1 WHERE phone=?`).run(phone);
+    console.log(`[optout] ${phone} opted out via "${hit}"`);
+
+    if (!already) {
+      const reply = (getSetting('optout_reply', '') || '').trim();
+      if (reply) { try { await rec.client.sendMessage(from, reply); } catch (_) {} }
+    }
+  } catch (e) { console.error('[handleIncoming]', e); }
 }
 
 function markSent(id)   { db.prepare(`UPDATE messages SET status='sent', error=NULL, sent_at=datetime('now','localtime') WHERE id=?`).run(id); }
@@ -279,18 +322,22 @@ app.post('/api/accounts/:id/logout', async (req, res) => {
   res.json({ ok: true });
 });
 
-// --- settings (OpenAI) --------------------------------------------------
+// --- settings (OpenAI + opt-out) ---------------------------------------
 app.get('/api/settings', (req, res) => {
   res.json({
     openai_model: getSetting('openai_model', 'gpt-4o-mini'),
     openai_set: !!getSetting('openai_api_key'),
+    optout_keywords: getSetting('optout_keywords', ''),
+    optout_reply: getSetting('optout_reply', ''),
   });
 });
 app.post('/api/settings', (req, res) => {
   const b = req.body || {};
-  if (typeof b.openai_api_key === 'string' && b.openai_api_key !== '') setSetting('openai_api_key', b.openai_api_key);
-  if (b.openai_api_key === '') setSetting('openai_api_key', '');
+  // empty key = leave unchanged (so a blank field never wipes a saved key)
+  if (typeof b.openai_api_key === 'string' && b.openai_api_key.trim() !== '') setSetting('openai_api_key', b.openai_api_key.trim());
   if (b.openai_model) setSetting('openai_model', b.openai_model);
+  if (typeof b.optout_keywords === 'string') setSetting('optout_keywords', b.optout_keywords);
+  if (typeof b.optout_reply === 'string') setSetting('optout_reply', b.optout_reply);
   res.json({ ok: true });
 });
 
@@ -357,7 +404,16 @@ app.post('/api/contacts/import', upload.single('file'), (req, res) => {
     const phoneCol = cols.find(c => /^(phone|mobile|number|whatsapp|cell|msisdn)/i.test(c)) || cols[0];
     const nameCol = cols.find(c => /^(name|full ?name|contact)/i.test(c));
 
+    // optional: add the imported contacts to a (new or existing) list
+    let listId = null;
+    const listName = String(req.body.list || '').trim();
+    if (listName) {
+      db.prepare(`INSERT OR IGNORE INTO lists (name) VALUES (?)`).run(listName);
+      listId = db.prepare(`SELECT id FROM lists WHERE name=?`).get(listName).id;
+    }
+
     const insert = db.prepare(`INSERT INTO contacts (name, phone, fields) VALUES (?, ?, ?)`);
+    const link = db.prepare(`INSERT OR IGNORE INTO contact_list (contact_id, list_id) VALUES (?, ?)`);
     let imported = 0, skipped = 0;
     db.transaction(() => {
       for (const row of rows) {
@@ -366,20 +422,69 @@ app.post('/api/contacts/import', upload.single('file'), (req, res) => {
         const name = nameCol ? String(row[nameCol] || '').trim() : '';
         const fields = {};
         for (const c of cols) { if (c !== phoneCol && c !== nameCol) fields[c] = row[c]; }
-        insert.run(name, phone, JSON.stringify(fields));
+        const info = insert.run(name, phone, JSON.stringify(fields));
+        if (listId) link.run(info.lastInsertRowid, listId);
         imported++;
       }
     })();
-    res.json({ imported, skipped, columns: cols, phoneColumn: phoneCol, nameColumn: nameCol || null });
+    res.json({ imported, skipped, columns: cols, phoneColumn: phoneCol, nameColumn: nameCol || null, list: listName || null });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 app.get('/api/contacts', (req, res) => {
-  const total = db.prepare(`SELECT COUNT(*) c FROM contacts`).get().c;
-  const rows = db.prepare(`SELECT id, name, phone, fields FROM contacts ORDER BY id DESC LIMIT 200`).all();
+  const listId = req.query.list_id ? +req.query.list_id : null;
+  const inList = listId ? `WHERE id IN (SELECT contact_id FROM contact_list WHERE list_id=${listId})` : '';
+  const total = db.prepare(`SELECT COUNT(*) c FROM contacts ${inList}`).get().c;
+  const unsubscribed = db.prepare(`SELECT COUNT(*) c FROM contacts WHERE unsubscribed=1`).get().c;
+  const rows = db.prepare(`SELECT id, name, phone, fields, unsubscribed FROM contacts ${inList} ORDER BY id DESC LIMIT 200`).all();
+  res.json({ total, unsubscribed, rows });
+});
+app.delete('/api/contacts', (req, res) => {
+  db.prepare(`DELETE FROM contacts`).run();
+  db.prepare(`DELETE FROM contact_list`).run();
+  res.json({ ok: true });
+});
+
+// --- lists --------------------------------------------------------------
+app.get('/api/lists', (req, res) => {
+  const rows = db.prepare(`
+    SELECT l.id, l.name,
+      (SELECT COUNT(*) FROM contact_list cl WHERE cl.list_id = l.id) AS count
+    FROM lists l ORDER BY l.name`).all();
+  res.json({ rows });
+});
+app.post('/api/lists', (req, res) => {
+  const name = String((req.body || {}).name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Name required' });
+  db.prepare(`INSERT OR IGNORE INTO lists (name) VALUES (?)`).run(name);
+  res.json({ ok: true });
+});
+app.post('/api/lists/:id/delete', (req, res) => {
+  const id = +req.params.id;
+  db.prepare(`DELETE FROM contact_list WHERE list_id=?`).run(id);   // contacts remain
+  db.prepare(`DELETE FROM lists WHERE id=?`).run(id);
+  res.json({ ok: true });
+});
+
+// --- opt-outs -----------------------------------------------------------
+app.get('/api/optouts', (req, res) => {
+  const total = db.prepare(`SELECT COUNT(*) c FROM optouts`).get().c;
+  const rows = db.prepare(`SELECT phone, keyword, created_at FROM optouts ORDER BY created_at DESC LIMIT 500`).all();
   res.json({ total, rows });
 });
-app.delete('/api/contacts', (req, res) => { db.prepare(`DELETE FROM contacts`).run(); res.json({ ok: true }); });
+app.post('/api/optouts', (req, res) => {
+  const phone = String((req.body || {}).phone || '').replace(/\D/g, '');
+  if (!phone) return res.status(400).json({ error: 'Phone required' });
+  db.prepare(`INSERT OR IGNORE INTO optouts (phone, keyword) VALUES (?, 'manual')`).run(phone);
+  db.prepare(`UPDATE contacts SET unsubscribed=1 WHERE phone=?`).run(phone);
+  res.json({ ok: true });
+});
+app.post('/api/optouts/delete', (req, res) => {
+  const phone = String((req.body || {}).phone || '').replace(/\D/g, '');
+  db.prepare(`DELETE FROM optouts WHERE phone=?`).run(phone);
+  db.prepare(`UPDATE contacts SET unsubscribed=0 WHERE phone=?`).run(phone);
+  res.json({ ok: true });
+});
 
 // --- campaigns ----------------------------------------------------------
 app.post('/api/campaigns', upload.single('media'), (req, res) => {
@@ -398,24 +503,30 @@ app.post('/api/campaigns', upload.single('media'), (req, res) => {
       mediaPath = safe; mediaName = req.file.originalname;
     }
 
+    const listId = b.list_id ? +b.list_id : null;
+
     const info = db.prepare(`
       INSERT INTO campaigns
         (account_id, name, variants, media_path, media_name, status,
          min_delay, max_delay, daily_limit, batch_size, batch_pause,
-         active_from, active_to, human_typing, natural_timing, micro_breaks, cloud_template)
-      VALUES (?,?,?,?,?, 'draft', ?,?,?,?,?, ?,?,?,?,?, ?)
+         active_from, active_to, human_typing, natural_timing, micro_breaks, cloud_template, list_id)
+      VALUES (?,?,?,?,?, 'draft', ?,?,?,?,?, ?,?,?,?,?, ?,?)
     `).run(
       +b.account_id, b.name, JSON.stringify(variants), mediaPath, mediaName,
       parseInt(b.min_delay) || 20, parseInt(b.max_delay) || 60,
       parseInt(b.daily_limit) || 0, parseInt(b.batch_size) || 0, parseInt(b.batch_pause) || 0,
       hourOrAlways(b.active_from), hourOrAlways(b.active_to),
       b.human_typing ? 1 : 0, b.natural_timing ? 1 : 0, b.micro_breaks ? 1 : 0,
-      b.cloud_template || null,
+      b.cloud_template || null, listId,
     );
     const campaignId = info.lastInsertRowid;
 
+    // Audience: a chosen list (or all), excluding unsubscribed + opt-outs.
+    let q = `SELECT * FROM contacts WHERE unsubscribed=0 AND phone NOT IN (SELECT phone FROM optouts)`;
+    if (listId) q += ` AND id IN (SELECT contact_id FROM contact_list WHERE list_id=${listId})`;
+    const contacts = db.prepare(q).all();
+
     // Enqueue: each contact gets a random variant, rendered now.
-    const contacts = db.prepare(`SELECT * FROM contacts`).all();
     const enq = db.prepare(`INSERT INTO messages (campaign_id, account_id, contact_id, phone, name, rendered) VALUES (?,?,?,?,?,?)`);
     db.transaction(() => {
       for (const c of contacts) {

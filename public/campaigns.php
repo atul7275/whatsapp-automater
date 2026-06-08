@@ -16,6 +16,7 @@ if (($_POST['action'] ?? '') === 'create') {
         'active_from' => $_POST['active_from'] ?? '',
         'active_to'   => $_POST['active_to'] ?? '',
         'cloud_template' => $_POST['cloud_template'] ?? '',
+        'list_id'     => $_POST['list_id'] ?? '',
     ];
     foreach (['human_typing','natural_timing','micro_breaks'] as $k) {
         if (!empty($_POST[$k])) $fields[$k] = '1';
@@ -30,6 +31,7 @@ $accounts = api_get('/api/accounts');
 $contacts = api_get('/api/contacts');
 $list = api_get('/api/campaigns');
 $ai = api_get('/api/settings');
+$lists = api_get('/api/lists');
 $accs = $accounts['rows'] ?? [];
 layout_head('Campaigns');
 ?>
@@ -59,6 +61,20 @@ layout_head('Campaigns');
           <?php endforeach; ?>
         </select>
       </label>
+    </div>
+
+    <div class="row">
+      <label style="flex:1">Audience
+        <select name="list_id" id="listSel">
+          <option value="">★ All contacts</option>
+          <?php foreach (($lists['rows'] ?? []) as $l): ?>
+            <option value="<?= (int)$l['id'] ?>"><?= h($l['name']) ?> (<?= (int)$l['count'] ?>)</option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <div style="flex:1; align-self:flex-end" class="muted small" id="audienceNote">
+        Unsubscribed numbers &amp; opt-outs are skipped automatically.
+      </div>
     </div>
 
     <label>Message variants <span class="muted small">— each recipient gets a random one, then personalized</span></label>
@@ -124,7 +140,7 @@ layout_head('Campaigns');
     </fieldset>
 
     <button class="btn" <?= (!$accs || empty($contacts['total'])) ? 'disabled' : '' ?>>
-      Create &amp; queue <?= (int)($contacts['total'] ?? 0) ?> messages
+      Create &amp; queue campaign
     </button>
   </form>
 </div>

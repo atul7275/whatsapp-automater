@@ -100,7 +100,23 @@ $('campForm').addEventListener('submit', (e) => {
   $('variantsField').value = JSON.stringify(variants);
 });
 
+// ---- live audience count --------------------------------------------------
+async function syncAudience() {
+  const sel = $('listSel');
+  if (!sel) return;
+  const q = sel.value ? ('?list_id=' + encodeURIComponent(sel.value)) : '';
+  try {
+    const r = await fetch(ENGINE + '/api/contacts' + q);
+    const d = await r.json();
+    const label = sel.value ? `"${sel.selectedOptions[0].text}"` : 'all contacts';
+    $('audienceNote').innerHTML =
+      `<strong>${d.total}</strong> in ${label}. Unsubscribed &amp; opt-outs are skipped automatically.`;
+  } catch (_) {}
+}
+
 // init
 $('accountSel').addEventListener('change', syncAccountUI);
+if ($('listSel')) $('listSel').addEventListener('change', syncAudience);
 addVariant();
 syncAccountUI();
+syncAudience();

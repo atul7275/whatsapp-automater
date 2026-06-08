@@ -44,8 +44,11 @@ each running its **own separate campaign queue**.
 - 👁 **Live preview** with real contact data
 - 🧪 **Send a test** to your own number first
 
-**Contacts & tracking**
+**Contacts, lists & compliance**
 - CSV / Excel import with auto-detected phone & name columns
+- 🗂️ **Contact lists** — import into named lists; target a list or everyone per campaign
+- 🚫 **STOP / opt-out auto-handler** — incoming "STOP" replies auto-unsubscribe
+  (optional auto-reply); every campaign skips opt-outs; `START` re-subscribes
 - Live progress bars, per-message logs, pause / resume / delete
 
 ---

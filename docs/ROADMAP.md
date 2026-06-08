@@ -3,13 +3,20 @@
 A frank assessment of where the tool stands: what's solid, what was just fixed,
 and what's still missing across architecture, security, bugs, UX and settings.
 
-## ✅ Fixed in this pass
+## ✅ Done
+- **Contact lists / per-campaign audience.** Import into named lists; each
+  campaign targets a list or everyone. (`lists`, `contact_list` tables.)
+- **STOP / opt-out auto-handler.** Automation accounts scan incoming replies for
+  configurable keywords, auto-unsubscribe the sender (optional auto-reply), and
+  every campaign skips unsubscribed + opt-out numbers. `START` re-subscribes.
+  Manual opt-out/resubscribe + opt-out list in the UI. (`optouts` table,
+  `contacts.unsubscribed`.)
 - **Engine bound to loopback only** (`127.0.0.1`) — was listening on all
-  interfaces, exposing the API (send messages, read contacts) to the LAN.
+  interfaces, exposing the API to the LAN.
 - **CORS restricted to localhost origins** + **Host-header check** — blocks other
-  websites / DNS-rebinding from scripting the API in the background.
-- **Delay range clamped** — `min_delay > max_delay` no longer breaks the random
-  wait (could previously fire with little/no gap).
+  websites / DNS-rebinding from scripting the API.
+- **Delay range clamped** — `min_delay > max_delay` no longer breaks the wait.
+- **Settings key-wipe bug fixed** — a blank OpenAI field no longer erases a saved key.
 
 ## 🔒 Security — still worth knowing
 - **No login on the panel.** Anyone with access to the machine can use it. Fine
@@ -34,17 +41,14 @@ and what's still missing across architecture, security, bugs, UX and settings.
 - **Excel numeric phones** can lose leading zeros / `+`. Always include the
   country code; storing phones as text in the sheet is safest.
 
-## 🏗️ Architecture / features — biggest gaps
-1. **No contact lists / segmentation.** Every campaign targets *all* contacts.
-   Real tools need tags/lists and per-campaign audience selection. **Highest-value
-   next feature.**
-2. **No incoming-message / STOP handling.** For opt-out compliance, listen for
-   replies and auto-flag "STOP" senders as unsubscribed (and skip them).
-3. **No scheduling.** Can't queue a campaign to begin at a future time.
-4. **No results export.** Add CSV/Excel export of the send log per campaign.
-5. **No global defaults / per-account daily cap.** The 50/day cap is hard-coded;
+## 🏗️ Architecture / features — remaining gaps
+1. **No scheduling.** Can't queue a campaign to begin at a future time.
+2. **No results export.** Add CSV/Excel export of the send log per campaign.
+3. **No global defaults / per-account daily cap.** The 50/day cap is hard-coded;
    surface it (and other defaults) on the Settings page.
-6. **Single worker per account, in-process.** Fine for this scale; if it ever
+4. **Cloud API opt-outs** need a Meta webhook (public URL) — currently only
+   automation accounts auto-handle STOP. Document/handle for Cloud API.
+5. **Single worker per account, in-process.** Fine for this scale; if it ever
    grows, move the queue to a proper job runner.
 
 ## 🧭 User journey — observations
@@ -65,8 +69,8 @@ and what's still missing across architecture, security, bugs, UX and settings.
   `data/`.
 
 ## Suggested order of work
-1. Contact lists / audience selection per campaign.
-2. STOP/opt-out auto-handler (compliance).
+1. ~~Contact lists / audience selection per campaign.~~ ✅
+2. ~~STOP/opt-out auto-handler (compliance).~~ ✅
 3. Results export (CSV/Excel).
 4. Campaign scheduling + duration estimate + pre-send confirm.
 5. Settings: global defaults, per-account cap, optional panel password.
