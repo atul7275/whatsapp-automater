@@ -84,23 +84,43 @@ $marker  = Join-Path $Runtime ".deps-version"
 $pkgVer  = "0"
 try { $pkgVer = (Get-Content (Join-Path $engineDir "package.json") -Raw | ConvertFrom-Json).version } catch {}
 
+# Probe whether the key modules actually load. Native commands writing to stderr
+# would otherwise abort the script (ErrorActionPreference=Stop), so run the probe
+# under 'Continue' and judge purely by exit code.
+function Test-Modules {
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  & $nodeExe -e "require('better-sqlite3');require('whatsapp-web.js');require('express')" 1>$null 2>$null
+  $ok = ($LASTEXITCODE -eq 0)
+  $ErrorActionPreference = $prev
+  return $ok
+}
+
 $needInstall = $true
 if ((Test-Path $modules) -and (Test-Path $marker)) {
   $have = (Get-Content $marker -ErrorAction SilentlyContinue | Select-Object -First 1)
-  if ("$have".Trim() -eq "$pkgVer") {
-    & $nodeExe -e "require('better-sqlite3');require('whatsapp-web.js');require('express')" 2>$null
-    if ($LASTEXITCODE -eq 0) { $needInstall = $false }
-  }
+  if ("$have".Trim() -eq "$pkgVer" -and (Test-Modules)) { $needInstall = $false }
 }
 
 if ($needInstall) {
-  Write-Host "[3/4] Installing app dependencies (first time downloads Chromium - a few minutes) ..."
+  Write-Host "[3/4] Installing app dependencies (downloads Chromium on first run - a few minutes) ..."
+  # A present-but-broken tree is reinstalled cleanly.
+  if (Test-Path $modules) {
+    Write-Host "      Existing node_modules looks incomplete - removing for a clean install ..."
+    Remove-Item $modules -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
   Push-Location $engineDir
   & $npm install --no-audit --no-fund
   $rc = $LASTEXITCODE
   Pop-Location
-  if ($rc -ne 0) { throw "npm install failed (exit $rc)." }
+  $ErrorActionPreference = $prev
+  if ($rc -ne 0) { throw "npm install failed (exit $rc). Check internet/proxy/antivirus." }
+  if (-not (Test-Modules)) {
+    & $nodeExe -e "require('better-sqlite3');require('whatsapp-web.js')" 2>"$Root\data\deps-error.log"
+    throw "Dependencies still fail to load after install - see data\deps-error.log"
+  }
   Set-Content -Path $marker -Value $pkgVer -Encoding ASCII
+  Write-Host "      Dependencies installed and verified."
 } else {
   Write-Host "[3/4] Dependencies already installed and matching v$pkgVer - skipping download."
 }
