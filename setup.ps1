@@ -13,6 +13,13 @@ $NodeDir = Join-Path $Runtime "node"
 $PhpDir  = Join-Path $Runtime "php"
 $NodeVer = "v20.18.1"          # pinned LTS (kept available on nodejs.org)
 
+# Put the bundled Node FIRST on PATH so npm lifecycle scripts (prebuild-install,
+# node-gyp) build native modules (better-sqlite3) against THIS Node — not any
+# system Node the user may have, which would cause a NODE_MODULE_VERSION mismatch.
+$env:PATH = "$NodeDir;$env:PATH"
+$env:npm_config_runtime = "node"
+$env:npm_config_target = $NodeVer.TrimStart('v')
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
 
