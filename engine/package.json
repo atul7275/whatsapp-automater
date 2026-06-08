@@ -1,7 +1,7 @@
 {
   "name": "bulkwpsender-engine",
-  "version": "1.9.4",
-  "description": "WhatsApp bulk sender engine (whatsapp-web.js) — local use only",
+  "version": "2.0.0",
+  "description": "WhatsApp bulk sender engine (whatsapp-web.js) \u2014 local use only",
   "main": "index.js",
   "type": "commonjs",
   "author": "Atul Kumar (Future Dynamics) <atul7275@gmail.com>",
@@ -19,7 +19,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "11.10.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",

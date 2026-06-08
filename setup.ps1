@@ -102,6 +102,21 @@ function Test-Modules {
   return $ok
 }
 
+# Drop the app's bundled, prebuilt better-sqlite3 binary into place. This binary
+# is built for the bundled Node (v20 / ABI 115), so it works with NO compiler, NO
+# system-Node interference, and NO download — eliminating every native-module
+# failure users hit. Pinned better-sqlite3 version keeps it always compatible.
+function Install-BundledBinary {
+  $bsDir = Join-Path $modules "better-sqlite3"
+  $src   = Join-Path $engineDir "prebuilt\better_sqlite3-node-v115-win32-x64.node"
+  if (-not (Test-Path $bsDir)) { return }
+  if (-not (Test-Path $src))   { return }
+  $dstDir = Join-Path $bsDir "build\Release"
+  New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
+  Copy-Item -Force $src (Join-Path $dstDir "better_sqlite3.node")
+  Write-Host "      Applied bundled better-sqlite3 binary (Node 20 / ABI 115)."
+}
+
 $needInstall = $true
 if ((Test-Path $modules) -and (Test-Path $marker)) {
   $have = (Get-Content $marker -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -110,23 +125,22 @@ if ((Test-Path $modules) -and (Test-Path $marker)) {
 
 if ($needInstall) {
   Write-Host "[3/4] Installing app dependencies (downloads Chromium on first run - a few minutes) ..."
-  # A present-but-broken tree is reinstalled cleanly.
   if (Test-Path $modules) {
-    Write-Host "      Existing node_modules looks incomplete - removing for a clean install ..."
+    Write-Host "      Removing incomplete node_modules for a clean install ..."
     Remove-Item $modules -Recurse -Force -ErrorAction SilentlyContinue
   }
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
   Push-Location $engineDir
-  # --foreground-scripts + explicit script enable: some machines have a global
-  # npmrc with ignore-scripts=true, which would skip the native-binary download
-  # (better-sqlite3) and leave require() failing.
+  # --ignore-scripts=false guards against a global npmrc that disables scripts.
   & $npm install --no-audit --no-fund --foreground-scripts --ignore-scripts=false
   $rc = $LASTEXITCODE
-  # Make sure the better-sqlite3 native binary is present (rebuild if scripts were skipped).
-  & $npm rebuild better-sqlite3 --foreground-scripts 2>&1 | Out-Null
   Pop-Location
   $ErrorActionPreference = $prev
   if ($rc -ne 0) { throw "npm install failed (exit $rc). Check internet/proxy/antivirus." }
+
+  # Guarantee the correct native binary regardless of compiler / system Node.
+  Install-BundledBinary
+
   if (-not (Test-Modules)) {
     $prev2 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     $err = & $nodeExe -e "try{require('better-sqlite3');require('whatsapp-web.js');console.log('ok')}catch(e){console.error(e && e.stack ? e.stack : String(e))}" 2>&1 | Out-String
@@ -141,7 +155,10 @@ if ($needInstall) {
   Set-Content -Path $marker -Value $pkgVer -Encoding ASCII
   Write-Host "      Dependencies installed and verified."
 } else {
-  Write-Host "[3/4] Dependencies already installed and matching v$pkgVer - skipping download."
+  # Even on the skip path, re-apply the bundled binary in case a previous run left
+  # a wrong-ABI one (cheap, idempotent), then continue.
+  Install-BundledBinary
+  Write-Host "[3/4] Dependencies already installed and matching v$pkgVer - reused (no download)."
 }
 
 # --- Shortcuts --------------------------------------------------------------
