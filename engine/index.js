@@ -17,7 +17,7 @@
 const path = require('path');
 const fs = require('fs');
 
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 const REPO = 'atul7275/whatsapp-automater';
 const PORT = process.env.PORT || 3000;
 const DATA = path.join(__dirname, '..', 'data');
@@ -852,28 +852,44 @@ app.post('/api/update', async (req, res) => {
   try {
     const r = await fetch(url, { headers: { 'User-Agent': 'BulkWPSender' } });
     if (!r.ok) throw new Error('download ' + r.status);
-    const installer = path.join(os.tmpdir(), 'BulkWPSender-Setup.exe');
+    // Save the installer under the install dir (stable, easy to find/run manually too).
+    const appRoot = path.join(__dirname, '..');
+    const installer = path.join(DATA, 'BulkWPSender-Setup.exe');
     fs.writeFileSync(installer, Buffer.from(await r.arrayBuffer()));
 
-    // Clean self-update: a separate PowerShell process stops THIS app (only our
-    // own node/php under the install dir — never the user's other node apps),
-    // installs silently (which preserves data\), then relaunches the tray.
-    const appRoot = path.join(__dirname, '..');
-    const updater = path.join(os.tmpdir(), 'bwps-update.ps1');
+    // Self-update: stop THIS app's node/php (scoped to the install dir), then run
+    // the installer VISIBLY so the user can approve SmartScreen (the app is
+    // unsigned — a hidden/silent launch gets blocked, which left the old version
+    // in place). The installer updates in place (same AppId → data\ is kept) and
+    // its post-install step relaunches the app. Every step is logged to update.log.
+    const updater = path.join(DATA, 'bwps-update.ps1');
+    const logf = path.join(DATA, 'update.log');
     const ps = `
+$ErrorActionPreference = 'Continue'
 $root = ${JSON.stringify(appRoot)}
 $installer = ${JSON.stringify(installer)}
+$log = ${JSON.stringify(logf)}
+function L($m){ Add-Content -Path $log -Value ((Get-Date).ToString('s') + '  ' + $m) }
+L 'updater started'
 Start-Sleep -Seconds 2
-Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root) -and ($_.Name -eq 'node.exe' -or $_.Name -eq 'php.exe') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+$rootL = $root.ToLower()
+try {
+  Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.ToLower().StartsWith($rootL) -and ($_.Name -eq 'node.exe' -or $_.Name -eq 'php.exe') } | ForEach-Object { L ('stopping ' + $_.Name + ' ' + $_.ProcessId); Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+} catch { L ('stop error: ' + $_) }
 Start-Sleep -Seconds 1
-Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+L ('launching installer: ' + $installer)
+# Visible install (no /VERYSILENT) so SmartScreen / UAC can be approved.
+$p = Start-Process -FilePath $installer -ArgumentList '/SILENT','/NORESTART' -PassThru -Wait -ErrorAction SilentlyContinue
+if ($p) { L ('installer exit code: ' + $p.ExitCode) } else { L 'installer failed to launch (SmartScreen blocked?)' }
 Start-Sleep -Seconds 2
+L 'relaunching app'
 Start-Process -FilePath 'powershell' -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',(Join-Path $root 'tray.ps1')
+L 'updater done'
 `;
     fs.writeFileSync(updater, ps);
-    spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', updater],
+    spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', updater],
       { detached: true, stdio: 'ignore' }).unref();
-    console.log('[update] updater launched; this engine will exit for the in-place update');
+    console.log('[update] updater launched (visible install); see data/update.log');
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });

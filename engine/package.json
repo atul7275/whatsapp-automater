@@ -1,6 +1,6 @@
 {
   "name": "bulkwpsender-engine",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "WhatsApp bulk sender engine (whatsapp-web.js) \u2014 local use only",
   "main": "index.js",
   "type": "commonjs",
