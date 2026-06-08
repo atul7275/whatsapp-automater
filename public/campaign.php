@@ -2,6 +2,10 @@
 require __DIR__ . '/inc.php';
 
 $id = (int)($_GET['id'] ?? 0);
+if (isset($_GET['dup'])) {
+    $r = api_post("/api/campaigns/$id/duplicate");
+    header('Location: campaign.php?id=' . ($r['id'] ?? $id)); exit;
+}
 $act = $_POST['action'] ?? '';
 if ($act === 'schedule') {
     api_post_json("/api/campaigns/$id/schedule", ['scheduled_at' => $_POST['scheduled_at'] ?? '']);
@@ -38,6 +42,10 @@ $pct = $p['total'] > 0 ? round($done / $p['total'] * 100) : 0;
       <?php if ((int)$p['failed'] > 0): ?>
         <form method="post"><input type="hidden" name="action" value="retry"><button class="btn ghost">↻ Retry failed (<?= (int)$p['failed'] ?>)</button></form>
       <?php endif; ?>
+      <?php if ($c['status'] !== 'running'): ?>
+        <a class="btn ghost" href="campaign_edit.php?id=<?= $id ?>">✎ Edit</a>
+      <?php endif; ?>
+      <a class="btn ghost" href="campaign.php?id=<?= $id ?>&dup=1">⧉ Clone</a>
       <a class="btn ghost" href="<?= h(ENGINE) ?>/api/campaigns/<?= $id ?>/export.xlsx">⬇ Export results</a>
       <form method="post" onsubmit="return confirm('Delete this campaign and its queue?')">
         <input type="hidden" name="action" value="delete"><button class="btn danger">🗑 Delete</button>

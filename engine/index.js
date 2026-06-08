@@ -17,7 +17,7 @@
 const path = require('path');
 const fs = require('fs');
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 const REPO = 'atul7275/whatsapp-automater';
 const PORT = process.env.PORT || 3000;
 const DATA = path.join(__dirname, '..', 'data');
@@ -504,12 +504,85 @@ app.post('/api/contacts/import', upload.single('file'), (req, res) => {
 
 app.get('/api/contacts', (req, res) => {
   const listId = req.query.list_id ? +req.query.list_id : null;
-  const inList = listId ? `WHERE id IN (SELECT contact_id FROM contact_list WHERE list_id=${listId})` : '';
-  const total = db.prepare(`SELECT COUNT(*) c FROM contacts ${inList}`).get().c;
+  const q = String(req.query.q || '').trim();
+  const where = [], params = [];
+  if (listId) where.push(`id IN (SELECT contact_id FROM contact_list WHERE list_id=${listId})`);
+  if (q) { where.push(`(name LIKE ? OR phone LIKE ?)`); params.push('%' + q + '%', '%' + q + '%'); }
+  const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const total = db.prepare(`SELECT COUNT(*) c FROM contacts ${clause}`).get(...params).c;
   const unsubscribed = db.prepare(`SELECT COUNT(*) c FROM contacts WHERE unsubscribed=1`).get().c;
-  const rows = db.prepare(`SELECT id, name, phone, fields, unsubscribed FROM contacts ${inList} ORDER BY id DESC LIMIT 200`).all();
+  const rows = db.prepare(`SELECT id, name, phone, fields, unsubscribed FROM contacts ${clause} ORDER BY id DESC LIMIT 500`).all(...params);
   res.json({ total, unsubscribed, rows });
 });
+
+// add a single contact (optionally to a list)
+app.post('/api/contacts', (req, res) => {
+  const b = req.body || {};
+  const phone = normalizePhone(b.phone);
+  if (!phone || phone.length < 7) return res.status(400).json({ error: 'A valid phone with country code is required' });
+  const name = String(b.name || '').trim();
+  const fields = (b.fields && typeof b.fields === 'object') ? b.fields : {};
+  const id = db.prepare(`INSERT INTO contacts (name, phone, fields) VALUES (?,?,?)`).run(name, phone, JSON.stringify(fields)).lastInsertRowid;
+  const listName = String(b.list || '').trim();
+  if (listName) {
+    db.prepare(`INSERT OR IGNORE INTO lists (name) VALUES (?)`).run(listName);
+    const listId = db.prepare(`SELECT id FROM lists WHERE name=?`).get(listName).id;
+    db.prepare(`INSERT OR IGNORE INTO contact_list (contact_id, list_id) VALUES (?,?)`).run(id, listId);
+  }
+  res.json({ id });
+});
+
+// bulk delete + list assignment (defined before :id routes)
+app.post('/api/contacts/bulk-delete', (req, res) => {
+  const ids = (req.body && Array.isArray(req.body.ids)) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) return res.json({ deleted: 0 });
+  const ph = ids.map(() => '?').join(',');
+  db.prepare(`DELETE FROM contacts WHERE id IN (${ph})`).run(...ids);
+  db.prepare(`DELETE FROM contact_list WHERE contact_id IN (${ph})`).run(...ids);
+  res.json({ deleted: ids.length });
+});
+app.post('/api/contacts/assign', (req, res) => {
+  const b = req.body || {};
+  const ids = Array.isArray(b.ids) ? b.ids.map(Number).filter(Boolean) : [];
+  const listId = +b.list_id;
+  const action = b.action === 'remove' ? 'remove' : 'add';
+  if (!ids.length || !listId) return res.status(400).json({ error: 'ids and list_id required' });
+  if (action === 'add') {
+    const ins = db.prepare(`INSERT OR IGNORE INTO contact_list (contact_id, list_id) VALUES (?,?)`);
+    db.transaction(() => { for (const id of ids) ins.run(id, listId); })();
+  } else {
+    const ph = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM contact_list WHERE list_id=? AND contact_id IN (${ph})`).run(listId, ...ids);
+  }
+  res.json({ ok: true });
+});
+
+app.get('/api/contacts/:id', (req, res) => {
+  const c = db.prepare(`SELECT id, name, phone, fields, unsubscribed FROM contacts WHERE id=?`).get(+req.params.id);
+  if (!c) return res.status(404).json({ error: 'Not found' });
+  c.lists = db.prepare(`SELECT list_id FROM contact_list WHERE contact_id=?`).all(+req.params.id).map(r => r.list_id);
+  res.json(c);
+});
+// edit a contact
+app.post('/api/contacts/:id', (req, res) => {
+  const id = +req.params.id;
+  const c = db.prepare(`SELECT * FROM contacts WHERE id=?`).get(id);
+  if (!c) return res.status(404).json({ error: 'Not found' });
+  const b = req.body || {};
+  const phone = normalizePhone(b.phone);
+  if (!phone || phone.length < 7) return res.status(400).json({ error: 'A valid phone with country code is required' });
+  const name = String(b.name || '').trim();
+  const fields = (b.fields && typeof b.fields === 'object') ? JSON.stringify(b.fields) : c.fields;
+  db.prepare(`UPDATE contacts SET name=?, phone=?, fields=? WHERE id=?`).run(name, phone, fields, id);
+  res.json({ ok: true });
+});
+app.delete('/api/contacts/:id', (req, res) => {
+  const id = +req.params.id;
+  db.prepare(`DELETE FROM contacts WHERE id=?`).run(id);
+  db.prepare(`DELETE FROM contact_list WHERE contact_id=?`).run(id);
+  res.json({ ok: true });
+});
+
 app.delete('/api/contacts', (req, res) => {
   db.prepare(`DELETE FROM contacts`).run();
   db.prepare(`DELETE FROM contact_list`).run();
@@ -591,30 +664,34 @@ app.post('/api/campaigns', upload.single('media'), (req, res) => {
       b.cloud_template || null, listId,
     );
     const campaignId = info.lastInsertRowid;
-
-    // Audience: a chosen list (or all), excluding unsubscribed + opt-outs.
-    let q = `SELECT * FROM contacts WHERE unsubscribed=0 AND phone NOT IN (SELECT phone FROM optouts)`;
-    if (listId) q += ` AND id IN (SELECT contact_id FROM contact_list WHERE list_id=${listId})`;
-    const contacts = db.prepare(q).all();
-
-    // Enqueue: each contact gets a random variant, rendered now.
-    const enq = db.prepare(`INSERT INTO messages (campaign_id, account_id, contact_id, phone, name, rendered) VALUES (?,?,?,?,?,?)`);
-    db.transaction(() => {
-      for (const c of contacts) {
-        const v = variants[Math.floor(Math.random() * variants.length)];
-        enq.run(campaignId, +b.account_id, c.id, c.phone, c.name, render(v, c));
-      }
-    })();
-
-    res.json({ id: campaignId, queued: contacts.length });
+    const queued = enqueue(campaignId, +b.account_id, variants, audienceContacts(listId));
+    res.json({ id: campaignId, queued });
   } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
+
+// Audience for a campaign: a chosen list (or all), excluding unsubscribed + opt-outs.
+function audienceContacts(listId) {
+  let q = `SELECT * FROM contacts WHERE unsubscribed=0 AND phone NOT IN (SELECT phone FROM optouts)`;
+  if (listId) q += ` AND id IN (SELECT contact_id FROM contact_list WHERE list_id=${+listId})`;
+  return db.prepare(q).all();
+}
+// Enqueue one rendered message per contact (random variant each).
+function enqueue(campaignId, accountId, variants, contacts) {
+  const enq = db.prepare(`INSERT INTO messages (campaign_id, account_id, contact_id, phone, name, rendered) VALUES (?,?,?,?,?,?)`);
+  db.transaction(() => {
+    for (const c of contacts) {
+      const v = variants[Math.floor(Math.random() * variants.length)];
+      enq.run(campaignId, accountId, c.id, c.phone, c.name, render(v, c));
+    }
+  })();
+  return contacts.length;
+}
 
 function progress(id) {
   return db.prepare(`
     SELECT COUNT(*) total,
-      SUM(status='sent') sent, SUM(status='failed') failed,
-      SUM(status='invalid') invalid, SUM(status='pending') pending
+      COALESCE(SUM(status='sent'),0) sent, COALESCE(SUM(status='failed'),0) failed,
+      COALESCE(SUM(status='invalid'),0) invalid, COALESCE(SUM(status='pending'),0) pending
     FROM messages WHERE campaign_id=?`).get(id);
 }
 
@@ -634,6 +711,64 @@ app.get('/api/campaigns/:id', (req, res) => {
   c.progress = progress(c.id);
   c.messages = db.prepare(`SELECT id, phone, name, status, error, sent_at FROM messages WHERE campaign_id=? ORDER BY id DESC LIMIT 300`).all(c.id);
   res.json(c);
+});
+
+// Edit a campaign (defined before the generic :action route). Rebuilds the
+// PENDING queue with the new message/audience; already-processed messages stay.
+app.post('/api/campaigns/:id/edit', upload.single('media'), (req, res) => {
+  try {
+    const id = +req.params.id;
+    const c = db.prepare(`SELECT * FROM campaigns WHERE id=?`).get(id);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    if (c.status === 'running') return res.status(400).json({ error: 'Pause the campaign before editing.' });
+    const b = req.body;
+    let variants = [];
+    try { variants = JSON.parse(b.variants || '[]'); } catch (_) {}
+    variants = variants.map(s => String(s).trim()).filter(Boolean);
+    if (!variants.length) return res.status(400).json({ error: 'At least one message is required' });
+
+    let mediaPath = c.media_path, mediaName = c.media_name;
+    if (req.file) {
+      const safe = path.join(UPLOAD_DIR, Date.now() + '_' + req.file.originalname.replace(/[^\w.\-]/g, '_'));
+      fs.renameSync(req.file.path, safe); mediaPath = safe; mediaName = req.file.originalname;
+    } else if (b.remove_media === '1') { mediaPath = null; mediaName = null; }
+
+    const listId = b.list_id ? +b.list_id : null;
+    const accountId = b.account_id ? +b.account_id : c.account_id;
+
+    db.prepare(`UPDATE campaigns SET account_id=?, name=?, variants=?, media_path=?, media_name=?,
+      min_delay=?, max_delay=?, daily_limit=?, batch_size=?, batch_pause=?,
+      active_from=?, active_to=?, human_typing=?, natural_timing=?, micro_breaks=?, cloud_template=?, list_id=? WHERE id=?`).run(
+      accountId, b.name || c.name, JSON.stringify(variants), mediaPath, mediaName,
+      parseInt(b.min_delay) || 20, parseInt(b.max_delay) || 60,
+      parseInt(b.daily_limit) || 0, parseInt(b.batch_size) || 0, parseInt(b.batch_pause) || 0,
+      hourOrAlways(b.active_from), hourOrAlways(b.active_to),
+      b.human_typing ? 1 : 0, b.natural_timing ? 1 : 0, b.micro_breaks ? 1 : 0,
+      b.cloud_template || null, listId, id);
+
+    // Rebuild pending queue: drop pending, re-enqueue audience minus already-messaged contacts.
+    db.prepare(`DELETE FROM messages WHERE campaign_id=? AND status='pending'`).run(id);
+    const done = new Set(db.prepare(`SELECT DISTINCT contact_id FROM messages WHERE campaign_id=?`).all(id).map(r => r.contact_id));
+    const audience = audienceContacts(listId).filter(ct => !done.has(ct.id));
+    const queued = enqueue(id, accountId, variants, audience);
+    if (queued > 0 && c.status === 'done') db.prepare(`UPDATE campaigns SET status='paused' WHERE id=?`).run(id);
+    res.json({ ok: true, queued });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// Duplicate a campaign as a fresh draft with the same settings + a new queue.
+app.post('/api/campaigns/:id/duplicate', (req, res) => {
+  const c = db.prepare(`SELECT * FROM campaigns WHERE id=?`).get(+req.params.id);
+  if (!c) return res.status(404).json({ error: 'Not found' });
+  let variants = []; try { variants = JSON.parse(c.variants || '[]'); } catch (_) {}
+  const newId = db.prepare(`INSERT INTO campaigns
+    (account_id,name,variants,media_path,media_name,status,min_delay,max_delay,daily_limit,batch_size,batch_pause,active_from,active_to,human_typing,natural_timing,micro_breaks,cloud_template,list_id)
+    VALUES (?,?,?,?,?, 'draft', ?,?,?,?,?, ?,?,?,?,?, ?,?)`).run(
+    c.account_id, c.name + ' (copy)', c.variants, c.media_path, c.media_name,
+    c.min_delay, c.max_delay, c.daily_limit, c.batch_size, c.batch_pause,
+    c.active_from, c.active_to, c.human_typing, c.natural_timing, c.micro_breaks, c.cloud_template, c.list_id).lastInsertRowid;
+  const queued = enqueue(newId, c.account_id, variants, audienceContacts(c.list_id));
+  res.json({ id: newId, queued });
 });
 
 app.post('/api/campaigns/:id/:action', (req, res) => {

@@ -100,12 +100,14 @@ $('campForm').addEventListener('submit', (e) => {
   if (!variants.length) { e.preventDefault(); alert('Add at least one message variant.'); return; }
   const acct = $('accountSel').selectedOptions[0]?.text.trim() || '';
   const aud = $('listSel') ? ($('listSel').selectedOptions[0]?.text || 'all') : 'all';
+  const tail = window.EDIT_MODE
+    ? `Pending messages will be rebuilt with these settings (already-sent ones are kept).`
+    : `It will be saved as a DRAFT — nothing sends until you press Start (or Schedule) on the next screen.`;
   const ok = confirm(
-    `Queue this campaign?\n\n` +
+    `${window.EDIT_MODE ? 'Save changes to this campaign?' : 'Queue this campaign?'}\n\n` +
     `• Account: ${acct}\n` +
     `• Audience: ${aud} (≈${lastAudienceCount} recipients; unsubscribed & opt-outs skipped)\n` +
-    `• Variants: ${variants.length}\n\n` +
-    `It will be saved as a DRAFT — nothing sends until you press Start (or Schedule) on the next screen.`
+    `• Variants: ${variants.length}\n\n` + tail
   );
   if (!ok) { e.preventDefault(); return; }
   $('variantsField').value = JSON.stringify(variants);
@@ -149,6 +151,11 @@ if ($('listSel')) $('listSel').addEventListener('change', syncAudience);
   const el = document.querySelector(`[name=${n}]`);
   if (el) el.addEventListener('input', syncAudience);
 });
-addVariant();
+// edit mode pre-fills variants; otherwise start with one empty box
+if (Array.isArray(window.EDIT_VARIANTS) && window.EDIT_VARIANTS.length) {
+  window.EDIT_VARIANTS.forEach(v => addVariant(v));
+} else {
+  addVariant();
+}
 syncAccountUI();
 syncAudience();

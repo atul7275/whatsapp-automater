@@ -27,6 +27,14 @@ if (($_POST['action'] ?? '') === 'create') {
     else { header('Location: campaign.php?id=' . $r['id']); exit; }
 }
 
+// row controls from the campaigns list
+$rowAct = $_POST['rowaction'] ?? '';
+if (in_array($rowAct, ['start','pause','delete','duplicate'], true)) {
+    $r = api_post('/api/campaigns/' . (int)$_POST['id'] . '/' . $rowAct);
+    if ($rowAct === 'duplicate' && !empty($r['id'])) { header('Location: campaign.php?id=' . $r['id']); exit; }
+    header('Location: campaigns.php'); exit;
+}
+
 $accounts = api_get('/api/accounts');
 $contacts = api_get('/api/contacts');
 $list = api_get('/api/campaigns');
@@ -165,14 +173,26 @@ layout_head('Campaigns');
     <table>
       <thead><tr><th>#</th><th>Name</th><th>Account</th><th>Status</th><th>Progress</th><th></th></tr></thead>
       <tbody>
-      <?php foreach ($list['rows'] as $c): $p=$c['progress']; $done=(int)$p['sent']+(int)$p['failed']+(int)$p['invalid']; ?>
+      <?php foreach ($list['rows'] as $c): $p=$c['progress']; $done=(int)$p['sent']+(int)$p['failed']+(int)$p['invalid']; $pct=$p['total']>0?round($done/$p['total']*100):0; ?>
         <tr>
           <td><?= (int)$c['id'] ?></td>
-          <td><?= h($c['name']) ?></td>
+          <td><a href="campaign.php?id=<?= (int)$c['id'] ?>"><?= h($c['name']) ?></a></td>
           <td class="small"><?= h($c['account_name']) ?></td>
           <td><span class="pill <?= h($c['status']) ?>"><?= h($c['status']) ?></span></td>
-          <td class="muted small"><?= $done ?>/<?= (int)$p['total'] ?> (✓<?= (int)$p['sent'] ?> ✗<?= (int)$p['failed'] ?>)</td>
-          <td><a class="btn small" href="campaign.php?id=<?= (int)$c['id'] ?>">Open</a></td>
+          <td class="muted small" style="min-width:140px">
+            <div class="bar" style="margin-bottom:3px"><div class="fill" style="width:<?= $pct ?>%"></div></div>
+            <?= $done ?>/<?= (int)$p['total'] ?> (✓<?= (int)$p['sent'] ?> ✗<?= (int)$p['failed'] ?>)
+          </td>
+          <td class="btnrow">
+            <?php if ($c['status'] === 'running'): ?>
+              <form method="post" style="margin:0"><input type="hidden" name="rowaction" value="pause"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn warn small">Pause</button></form>
+            <?php elseif (in_array($c['status'], ['draft','paused'])): ?>
+              <form method="post" style="margin:0"><input type="hidden" name="rowaction" value="start"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn small">Start</button></form>
+            <?php endif; ?>
+            <a class="btn ghost small" href="campaign.php?id=<?= (int)$c['id'] ?>">Open</a>
+            <form method="post" style="margin:0"><input type="hidden" name="rowaction" value="duplicate"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn ghost small">Clone</button></form>
+            <form method="post" onsubmit="return confirm('Delete this campaign?')" style="margin:0"><input type="hidden" name="rowaction" value="delete"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>"><button class="btn danger small">Del</button></form>
+          </td>
         </tr>
       <?php endforeach; ?>
       </tbody>
@@ -180,5 +200,8 @@ layout_head('Campaigns');
   <?php endif; ?>
 </div>
 
+<?php if (array_filter($list['rows'] ?? [], fn($c)=>$c['status']==='running')): ?>
+<script>setTimeout(()=>location.reload(), 6000);</script>
+<?php endif; ?>
 <script src="assets/composer.js"></script>
 <?php layout_foot(); ?>
